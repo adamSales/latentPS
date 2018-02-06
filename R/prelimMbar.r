@@ -1,9 +1,8 @@
 ### only look at year 2
 ### and only at students who weren't in  year 1
-library(splines)
-library(rstan)
-library(dplyr)
 memory.limit(50000)
+
+library(dplyr)
 
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
@@ -25,7 +24,7 @@ options(mc.cores = parallel::detectCores())
 
 dataPrepObs <- function(dat,advance,discard=TRUE){
  dat <- dat[!dat$field_id%in%dat$field_id[dat$year==1],]
- print(table(dat$year))
+# print(table(dat$year))
 
  dat <- droplevels(dat)
 ### look at promotion
@@ -133,5 +132,5 @@ sdatObs <- makeStanDatObs(datObs)
 
 #NOT RUN:
 #mod <- stan('~/gitRepos/ctaiAdvance/psmodObs.stan',data=sdat); save(mod,sdat,file='fittedModels/mbarModel.RData')
-#printStan(mod)
+#printaStan(mod)
 

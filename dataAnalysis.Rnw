@@ -1,21 +1,7 @@
-\documentclass[fullpage]{article}
-
-\RequirePackage[OT1]{fontenc}
-\RequirePackage{amsthm,amsmath,amsfonts}
-\RequirePackage{natbib}
-\RequirePackage[colorlinks,citecolor=blue,urlcolor=blue]{hyperref}
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
 \usepackage{bm}
-\usepackage{subcaption}
-\usepackage{graphicx}
-\usepackage{multirow}
-\usepackage{xr}
-
-\startlocaldefs
-\numberwithin{equation}{section}
-\theoremstyle{plain}
-\newtheorem{thm}{Theorem}[section]
-
-
 
 \newcommand{\yti}{Y_{Ti}}
 \newcommand{\yci}{Y_{Ci}}
@@ -32,10 +18,6 @@
 \newcommand{\bsi}{\bm{s}_i}
 
 \newcommand{\EE}{\mathbb{E}}
-
-% see
-% https://tex.stackexchange.com/questions/42726/align-but-show-one-equation-number-at-the-end
-\newcommand\numberthis{\addtocounter{equation}{1}\tag{\theequation}}
 
 \title{Data Analysis for 'The Role of Mastery Learning'}
 
@@ -58,9 +40,15 @@ The auxilliary files sourced here are available at our github repository,
 \url{https://github.com/adamSales/ctaiAdvance}.
 
 First, load in and transform the (pre-imputed) data:
-<<prelim>>=
+<<data>>=
 load('data/HSdata.RData')
 load('data/advanceData.RData')
+@
+We'll use the \texttt{R} package \texttt{rstan} to run the models:
+<<packages>>=
+library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
 @
 
 \section{Data Description (Section \ref{sec:data})}
@@ -84,25 +72,250 @@ print(xtable::xtable(miss))
 This code produces the covariate balance information:
 <<covBal>>=
 covBal <- NULL
-cat('
-\\begin{tabular}{rrrrr}
-\\hline
-Covariate & Category & Overall Percent & Percent of Treated & Percent of Control\\\\
-\\hline \n')
 for(i in c('race','sex','spec')){
-    cat(i,'&&&&\\\\ \n')
+    covBal <- rbind(covBal,c(i,NA,NA,NA,NA))
+
     for(ll in levels(dat[[i]])){
-        cat('&')
-        cat(ll,mean(dat[[i]]==ll),mean(dat[[i]][dat$treatment==1]==ll),mean(dat[[i]][dat$treatment==0]==ll), sep='&')
-        cat('\\\\ \n')
+        covBal <- rbind(covBal,c(NA,ll,round(c(mean(dat[[i]]==ll),mean(dat[[i]][dat$treatment==1]==ll),mean(dat[[i]][dat$treatment==0]==ll)),2)))
+
     }
 }
+colnames(covBal) <- c('Covariate','Category','Overall Percent','Percent of Treated','Percent of Control')
+print(xtable(covBal),floating=FALSE,include.rownames=FALSE)
 @
 The overall p-value for balance is:
-<<overalBal>>=
+<<overalBal,results='markup'>>=
 library(RItools) ## using development version
 balMod <- balanceTest(treatment~poly(xirt,2)+spec+race+sex+strata(pair)+cluster(schoolid2),data=datOrig,report='chisquare.test')
 print(balMod$overall['pair',])
 @
 
 \section{PS Model with $\bar{m}_T$}
+
+Here we estimate the model in Section
+\ref{sec:principalStratification} stratifying on $\bar{m}_T$.
+
+First, we create the datasets:
+<<obsData>>=
+source('R/prelimMbar.r')
+@
+
+The model is encoded in the file \texttt{psmodObs.stan}.
+It may be summarized as follows.
+The model for $\bar{m}_T$ is:
+\begin{equation}\label{eq:mbarUsage}
+\bar{m}_{Ti}=\alpha^U_s+\bm{x}_i^T\bm{\beta^U}+\epsilon^{Ui}_i+\epsilon^{Ut}_{t[i]}
+\end{equation}
+where $\alpha^U_s$ is a separate intercept for each state, and $\bm{x}_i$ is a vector of covariates: dummy variables for
+racial/ethnic category, a dummy variable for sex, dummy variables for
+special education category, and linear and quadratic terms for
+pretest.
+The normally-distributed errors $\epsilon^{Ui}$ and $\epsilon^{Ut}_{t[i]}$ vary at the
+individual and teacher levels.
+
+The model for $Y$ is
+\begin{equation}
+Y_i=\alpha^Y_p+\bm{x}_i^T\bm{\beta^Y}+a_1\bar{m}_{Ti}+Z_i(b_0+b_1*\bar{m}_{Ti})+\epsilon^{Yi}_i+\epsilon^{Yt}_{t[i]}+\epsilon^{Ys}_{s[i]}
+\end{equation}
+where $\alpha^Y_p$ is a separate intercept for each randomization
+block $p$, $Z_i$ is a dummy variable for treatment status,
+$\epsilon^{Ys}_{s[i]}$ is a normally distributed error at the school
+level, and the rest of the variables are analogous to those in
+(\ref{eq:mbarUsage}).
+We run the model with the \texttt{stan} command from \texttt{rstan}:
+<<mbarModel,eval=FALSE>>=
+mbarMod <- stan('R/psmodObs.stan',data=sdat,seed=613)
+@
+
+Figure \ref{fig:mbarModel} can be replicated with the following code:
+
+<<mbarModelFig>>=
+library(tikzDevice) ## allows latex code in figure
+options( tikzLatexPackages = c(
+getOption( "tikzLatexPackages" ),
+"\\usepackage{amsmath,amsfonts}"
+))
+
+draw <- 1000
+
+samps <- extract(mbarMod)
+plotDatObs <- with(sdatObs,data.frame(Y=c(YtO,YtM,Yc),mbar=c(MbarTO,samps$MbarTM[draw,],samps$MbarC[draw,]),Z=c(rep(1,nstudTO),rep(1,nstudTM),rep(0,nstudC))))
+plotDatObs$treat <- ifelse(plotDatObs$Z==1,'Treatment','Control')
+plotDatObs$slope <- ifelse(plotDatObs$treat=='Control',samps$a1[draw],samps$a1[draw]+samps$b1[draw])
+plotDatObs$int <- ifelse(plotDatObs$treat=='Control',samps$a0[draw],samps$a0[draw]+samps$b0[draw])
+
+plotDatObs <- within(plotDatObs, int <- int-( mean(int+slope*mbar)-mean(plotDatObs$Y)))
+plotDatObs <- plotDatObs[order(plotDatObs$treat),]
+plotDatObs$treat2 <- plotDatObs$treat
+
+tikz(file = "figure/mbarModel.tex",
+  standAlone = T,
+  width  = 6, height  = 3)
+
+ggplot(plotDatObs,aes(mbar,Y,fill=treat,group=treat,alpha=treat,color=treat))+geom_point(size=2)+
+    geom_abline(aes(intercept=int,slope=slope,linetype=treat2),color='black',size=2,alpha=1)+scale_alpha_discrete(range=c(0.4,.8))+
+    scale_colour_manual(values=c('red','blue'))+
+    labs(group=NULL,fill=NULL,alpha=NULL)+xlab('$\\bar{m}_T$')+
+    ylab('Posttest Score')+theme(legend.position='top',text=element_text(size=20))+
+    guides(color = guide_legend(title=NULL,override.aes=list(alpha=1),keywidth=3),linetype=guide_legend(title=NULL,keywidth=1))#override.aes=list(size=2)))
+dev.off()
+setwd('figure'); tools::texi2dvi('mbarModel.tex', pdf = T, clean = T); setwd('..')
+@
+\includegraphics{figure/mbarModel.pdf}
+
+To save memory, save and delete the $\bar{m}_T$ model:
+<<mbarSave,eval=FALSE>>=
+save(mbarMod,file='fittedModels/mbarMod.RData')
+@
+<<mbarDelete,results='hide'>>=
+rm(mbarMod); gc()
+@
+
+
+\section{The Main PS Model}
+This section reproduces our paper's main model, described in Section \ref{sec:themodel}.
+
+The data for the main model (similar to the $\bar{m}$ model but
+including student-section level mastery data) relies on a secondary
+file (available at github):
+<<prelimMain>>=
+source('R/prelimStan.r')
+@
+
+\newpage
+Since this is the main model, we will include full stan code in this
+online supplement:
+\begin{verbatim}
+<<mainModel,echo=FALSE,results='asis'>>=
+cat(readLines('R/psmod.stan'),sep='\n')
+@
+\end{verbatim}
+
+This code runs the model:
+<<runmainModel,eval=FALSE>>=
+main <- stan('src/psmod.stan',data =sdat,warmup=1500,chains=10,iter=5000)
+@
+
+\section{Multiple Imputation Model Fit}
+
+To give some intuition on how the model fitting worked, and to what
+extent treatment effect moderation was discernable in this dataset
+anyway, we re-fit the model using (something akin to) multiple
+imputation.
+First, extract 1000 random draws of $\eta_T$ (denoted as
+\texttt{studEff} in the model code) from the fitted model.
+Then, for each draw, fit a standard HLM interacting treatment with the
+$\eta_T$ draw.
+<<multImp>>=
+library(lme4)
+set.seed(613)
+U <- extract(main,'studEff')[[1]]
+
+multImp <- apply(U[sample(1:nrow(U),1000),],1,
+                 function(u) summary(
+                                 lmer(Y~treatment*u+poly(xirt,2)+race+sex+spec+state+(1|schoolid2)+(1|teachid2),
+                                      data=dat))$coef[treatment:u,])
+@
+
+
+
+\section{Figures Comparing PS with $\bar{m}_T$ to PS with $\eta$}
+
+Figure \ref{fig:sampleSizeMbar}:
+<<sampleSizeMbar>>=
+## smart jittering:
+datObs$mbarJ <- datObs$mbar
+datObs$nsecJ <- datObs$nsec
+tab <- with(datObs,table(mbar,nsec))
+mult <- which(tab>1,arr.ind=TRUE)
+ms <- sort(unique(datObs$mbar))
+ns <- sort(unique(datObs$nsec))
+for(i in 1:nrow(mult)){
+    w <- which(datObs$mbar==ms[mult[i,'mbar']] & datObs$nsec==ns[mult[i,'nsec']])
+    s <- length(w)
+    if(s>1){
+        width=min(s*0.002,0.01)
+        height=min(s*0.2,2)
+        datObs$nsecJ[w] <- datObs$nsecJ[w]+runif(s,-width,width)
+        datObs$mbarJ[w] <- datObs$mbarJ[w]+runif(s,-width,width)
+    }
+}
+
+
+
+tikz(file='figure/mbarSampleSize.tex',
+     standAlone=T,
+     width=3,height=3)
+ggplot(datObs,aes(mbarJ,nsecJ))+geom_point()+xlab('$\\bar{m}$')+ylab('$n_{sec}$')+theme(text=element_text(size=20))
+dev.off()
+setwd('figure'); tools::texi2dvi('mbarSampleSize.tex', pdf = T, clean = T); setwd('..')
+@
+\includegraphics{figure/mbarSampleSize.pdf}
+
+Figure \ref{fig:etaSampleSize}:
+<<sampleSizeEta>>=
+sdatLat <- sdat
+nsec <- as.vector(table(sdatLat$studentM))
+etaDraws <- extract(main,'studEff')[[1]][,sort(unique(sdatLat$studentM))]
+eta <- colMeans(etaDraws)
+eta <- etaDraws[draw,]
+etasd <- apply(etaDraws,2,sd)
+
+plotDat <- data.frame(nsec=nsec,eta=eta,etasd=etasd)
+
+tikz(file='figure/etaSampleSize.tex',
+     standAlone=T,
+     width=3,height=3)
+ggplot(plotDat,aes(eta,nsec,size=1/etasd))+geom_point()+ylab(NULL)+#ylab('$n_{sec}$')+
+    labs(size='$1/\\text{SE}(\\eta_T)$')+scale_size(range=c(.5,2))+guides(size=FALSE)+xlab('$\\eta_T$')+
+    theme(text=element_text(size=20))+
+    theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())#+ggtitle('One Posterior Draw')#+xlab('$\\mathbb{E}\\eta$')
+dev.off()
+setwd('figure'); tools::texi2dvi('etaSampleSize.tex', pdf = T, clean = T); setwd('..')
+
+@
+\includegraphics{figure/etaSampleSize.pdf}
+
+Figure \ref{fig:mbarDiff}:
+<<mbarDiff>>=
+secDiff <- -extract(main,'secEff')[[1]][draw,]
+sss <- secDiff[sdatLat$sec]
+mDiff <- aggregate(sss,list(stud=sdatLat$studentM),mean)
+mbar <- aggregate(sdatLat$grad,list(sdatLat$studentM),mean)
+
+mbarDiffDat <- data.frame(mbar=mbar$x,mDiff=mDiff$x)
+
+
+tikz(file='figure/mbarDiff.tex',
+     standAlone=T,
+     width=3,height=3)
+ggplot(mbarDiffDat,aes(mbar,mDiff))+geom_point()+xlab('$\\bar{m}$')+ylab('Avg. Sec. Difficulty')+
+    theme(text=element_text(size=20))
+dev.off()
+setwd('figure'); tools::texi2dvi('mbarDiff.tex', pdf = T, clean = T); setwd('..')
+@
+\includegraphics{figure/mbarDiff.pdf}
+
+Figure \ref{fig:etaDiff}:
+<<etaDiff>>=
+plotDat$mDiff <- mDiff$x
+tikz(file='figure/etaDiff.tex',
+     standAlone=T,
+     width=3,height=3)
+ggplot(plotDat,aes(eta,mDiff,size=1/etasd))+geom_point()+#ylab('$Avg. Section Difficulty$')+
+    labs(size='$1/\\text{SE}(\\eta_T)$')+scale_size(range=c(.5,2))+guides(size=FALSE)+xlab('$\\eta_T$')+
+    theme(text=element_text(size=20))+
+    theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())#+ggtitle('One Posterior Draw')#+xlab('$\\mathbb{E}\\eta$')
+dev.off()
+setwd('figure'); tools::texi2dvi('etaDiff.tex', pdf = T, clean = T); setwd('..')
+@
+\includegraphics{figure/etaDiff.pdf}
+
+\section{Main Model Results}
+
+
+\end{document}

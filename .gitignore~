@@ -56,5 +56,3 @@ cache/*
 data/HSdata.RData
 dataAnalysis.aux
 dataAnalysis.out
-
-.#*
