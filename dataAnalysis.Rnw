@@ -1,0 +1,108 @@
+\documentclass[fullpage]{article}
+
+\RequirePackage[OT1]{fontenc}
+\RequirePackage{amsthm,amsmath,amsfonts}
+\RequirePackage{natbib}
+\RequirePackage[colorlinks,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage{bm}
+\usepackage{subcaption}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{xr}
+
+\startlocaldefs
+\numberwithin{equation}{section}
+\theoremstyle{plain}
+\newtheorem{thm}{Theorem}[section]
+
+
+
+\newcommand{\yti}{Y_{Ti}}
+\newcommand{\yci}{Y_{Ci}}
+\newcommand{\uti}{U_{Ti}}
+\newcommand{\uci}{U_{Ci}}
+\newcommand{\etat}{\eta_T}
+\newcommand{\etati}{\eta_{Ti}}
+
+\newcommand{\mti}{\bar{m}_{Ti}}
+\newcommand{\byt}{\bm{Y_T}}
+\newcommand{\byc}{\bm{Y_C}}
+\newcommand{\bmt}{\bm{\bar{m}_T}}
+\newcommand{\bmi}{\bm{m}_i}
+\newcommand{\bsi}{\bm{s}_i}
+
+\newcommand{\EE}{\mathbb{E}}
+
+% see
+% https://tex.stackexchange.com/questions/42726/align-but-show-one-equation-number-at-the-end
+\newcommand\numberthis{\addtocounter{equation}{1}\tag{\theequation}}
+
+\title{Data Analysis for 'The Role of Mastery Learning'}
+
+<<prelim,include=FALSE>>=
+library(knitr)
+
+opts_chunk$set(
+echo=TRUE,results='asis',warning = FALSE,message = FALSE,cache=TRUE,error = FALSE
+)
+
+@
+
+
+\begin{document}
+This document includes code to produce all of the results and run all
+of the models reported in ``The Role of Mastery Learning in
+Intelligent Tutoring Systems: Principal Stratification on a Latent Variable.''
+
+The auxilliary files sourced here are available at our github repository,
+\url{https://github.com/adamSales/ctaiAdvance}.
+
+First, load in and transform the (pre-imputed) data:
+<<prelim>>=
+load('data/HSdata.RData')
+load('data/advanceData.RData')
+@
+
+\section{Data Description (Section \ref{sec:data})}
+
+This code produces the missigness information from Table 1, summarizing the student level data:
+<<missignessTable>>=
+miss <- NULL
+for(i in c('race','sex','spec','xirt')) miss <- rbind(miss,
+ c(sum(is.na(covs[[i]])),mean(is.na(covs[[i]])),error[i,'error']))
+miss <- as.data.frame(miss)
+miss$`Error Type` <- c('PFC','PFC','PFC','SRMSE')
+rownames(miss) <- c('Race/Ethnicity','Sex','Special Education','Pretest')
+names(miss)[1:3] <- c('# Missing','% Missing','Imputation Error')
+miss[,2] <- as.integer(round(miss[,2]*100))
+miss[,1] <- as.integer(miss[,1])
+miss['Pretest','Imputation Error'] <- sqrt(miss['Pretest','Imputation Error'])/sd(covs$xirt,na.rm=TRUE)
+
+
+print(xtable::xtable(miss))
+@
+This code produces the covariate balance information:
+<<covBal>>=
+covBal <- NULL
+cat('
+\\begin{tabular}{rrrrr}
+\\hline
+Covariate & Category & Overall Percent & Percent of Treated & Percent of Control\\\\
+\\hline \n')
+for(i in c('race','sex','spec')){
+    cat(i,'&&&&\\\\ \n')
+    for(ll in levels(dat[[i]])){
+        cat('&')
+        cat(ll,mean(dat[[i]]==ll),mean(dat[[i]][dat$treatment==1]==ll),mean(dat[[i]][dat$treatment==0]==ll), sep='&')
+        cat('\\\\ \n')
+    }
+}
+@
+The overall p-value for balance is:
+<<overalBal>>=
+library(RItools) ## using development version
+balMod <- balanceTest(treatment~poly(xirt,2)+spec+race+sex+strata(pair)+cluster(schoolid2),data=datOrig,report='chisquare.test')
+print(balMod$overall['pair',])
+@
+
+\section{PS Model with $\bar{m}_T$}
