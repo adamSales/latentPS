@@ -165,7 +165,7 @@ setwd('figure'); tools::texi2dvi('mbarModel.tex', pdf = T, clean = T); setwd('..
 
 To save memory, save and delete the $\bar{m}_T$ model:
 <<mbarSave>>=
-save(mbarMod,file='fittedModels/mbarMod.RData')
+save(mbarMod,file='output/mbarMod.RData')
 @
 <<mbarDelete,results='hide'>>=
 rm(mbarMod); gc()
@@ -368,7 +368,7 @@ dev.off()
 \subsection{CTAI Treatment Effects}
 
 <<trtEff,results='hide'>>=
-pdf('figure/potentialOutcomes.pdf')
+pdf('figure/treatmentEffects.pdf')
 set.seed(613)
 samp <- sample(1:nrow(draws$studEff),1000)
 stEf <- draws$studEff[samp,]
@@ -413,7 +413,8 @@ polygon(c(xx,rev(xx)),c(YtUp,rev(YtDown)),col=adjustcolor('blue',0.1))
  legend('topleft',legend=c(expression(Y[C]),expression(Y[T])),col=c('red','blue'),lwd=2)
  dev.off()
 @
-
+\includegraphics{figure/treatmentEffects.pdf}
+\includegraphics{figure/potentialOutcomes.pdf}
 
 
 

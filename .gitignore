@@ -58,3 +58,8 @@ dataAnalysis.aux
 dataAnalysis.out
 
 .#*
+dataAnalysis-tikzDictionary
+output/mbarMod.RData
+*.tex
+dataAnalysis.tex
+figure/mbarModel.tex
