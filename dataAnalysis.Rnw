@@ -23,7 +23,7 @@
 
 <<prelim,include=FALSE>>=
 library(knitr)
-
+library(xtable)
 opts_chunk$set(
 echo=TRUE,results='asis',warning = FALSE,message = FALSE,cache=TRUE,error = FALSE
 )
@@ -86,7 +86,7 @@ print(xtable(covBal),floating=FALSE,include.rownames=FALSE)
 The overall p-value for balance is:
 <<overalBal,results='markup'>>=
 library(RItools) ## using development version
-balMod <- balanceTest(treatment~poly(xirt,2)+spec+race+sex+strata(pair)+cluster(schoolid2),data=datOrig,report='chisquare.test')
+balMod <- balanceTest(treatment~poly(xirt,2)+spec+race+sex+strata(pair)+cluster(schoolid2),data=dat,report='chisquare.test')
 print(balMod$overall['pair',])
 @
 
@@ -96,7 +96,7 @@ Here we estimate the model in Section
 \ref{sec:principalStratification} stratifying on $\bar{m}_T$.
 
 First, we create the datasets:
-<<obsData>>=
+<<obsData,dependson='data'>>=
 source('R/prelimMbar.r')
 @
 
@@ -123,8 +123,8 @@ $\epsilon^{Ys}_{s[i]}$ is a normally distributed error at the school
 level, and the rest of the variables are analogous to those in
 (\ref{eq:mbarUsage}).
 We run the model with the \texttt{stan} command from \texttt{rstan}:
-<<mbarModel,eval=FALSE>>=
-mbarMod <- stan('R/psmodObs.stan',data=sdat,seed=613)
+<<mbarModel,dependson='obsData'>>=
+mbarMod <- stan('R/psmodObs.stan',data=sdatObs,seed=613)
 @
 
 Figure \ref{fig:mbarModel} can be replicated with the following code:
@@ -164,7 +164,7 @@ setwd('figure'); tools::texi2dvi('mbarModel.tex', pdf = T, clean = T); setwd('..
 \includegraphics{figure/mbarModel.pdf}
 
 To save memory, save and delete the $\bar{m}_T$ model:
-<<mbarSave,eval=FALSE>>=
+<<mbarSave>>=
 save(mbarMod,file='fittedModels/mbarMod.RData')
 @
 <<mbarDelete,results='hide'>>=
@@ -178,7 +178,7 @@ This section reproduces our paper's main model, described in Section \ref{sec:th
 The data for the main model (similar to the $\bar{m}$ model but
 including student-section level mastery data) relies on a secondary
 file (available at github):
-<<prelimMain>>=
+<<prelimMain,dependson='data'>>=
 source('R/prelimStan.r')
 @
 
@@ -192,8 +192,8 @@ cat(readLines('R/psmod.stan'),sep='\n')
 \end{verbatim}
 
 This code runs the model:
-<<runmainModel,eval=FALSE>>=
-main <- stan('src/psmod.stan',data =sdat,warmup=1500,chains=10,iter=5000)
+<<runmainModel,dependson='prelimMain'>>=
+main <- stan('R/psmod.stan',data =sdat,warmup=1500,chains=10,iter=5000)
 @
 
 \section{Multiple Imputation Model Fit}
@@ -217,7 +217,16 @@ multImp <- apply(U[sample(1:nrow(U),1000),],1,
                                       data=dat))$coef['treatment:u',])
 @
 
+Does this give similar answers to the main model?
+<<multImpVsMain>>=
+mean(multImp['Estimate',])
 
+## use "Rubin's Rule" to estimate SE
+sqrt(var(multImp['Estimate',])+mean(multImp['Std. Error',]^2))
+
+## now for the main model:
+summary(main,par='b1',probs=c())[[1]]
+@
 
 \section{Figures Comparing PS with $\bar{m}_T$ to PS with $\eta$}
 
@@ -316,6 +325,96 @@ setwd('figure'); tools::texi2dvi('etaDiff.tex', pdf = T, clean = T); setwd('..')
 \includegraphics{figure/etaDiff.pdf}
 
 \section{Main Model Results}
+Get all the MCMC draws from the main model:
+<<mainDraws>>=
+draws <- extract(main)
+@
+\subsection{Predicting Mastery}
+<<usageModel>>=
+library(coefplot)
+
+coefs <- summary(main,'betaU')[[1]]
+rownames(coefs) <- colnames(sdat$X)
+
+## sqrt of average (over the draws) of the variance of eta
+sdEta <- sqrt(mean(apply(draws$studEff,1,var)))
+
+coefs <- coefs/apply(sdat$X,2,sd)/sdEta
+
+cpdf <- data.frame(Value=coefs[3:7,1],Coefficient=c('Black/Multiracial','Hispanic/Native American','Male','Special Ed.','Gifted'),HighInner=coefs[3:7,'75%'],LowInner=coefs[3:7,'25%'],HighOuter=coefs[3:7,'97.5%'],LowOuter=coefs[3:7,'2.5%'],Model='model')
+
+coefplot.data.frame(cpdf,title=NULL,xlab=expression(hat(beta)[std]),ylab=NULL)+theme(text=element_text(size=20))
+ggsave('figure/usageCoef.pdf',width=3,height=3)
+
+pdf('figure/pretestEta.pdf')
+omar <- par()$mar
+par(mar=omar+c(0,1,-1,0))
+plot(dat$xirt,colMeans(draws$studEff)/sdEta,col=ifelse(dat$treatment==1,'blue','red'),
+     xlab='Pretest (std)',ylab=expression(paste('E[',eta[T],'|x]')),cex.lab=2)
+X <- scale(model.matrix(~poly(xirt,2),data=dat)[,-1])
+xpred <- (X[,1]*mean(draws$betaU[,1])+X[,2]*mean(draws$betaU[,2]))/sdEta
+set.seed(613)
+samp <- sample(1:4000,100)
+for(ss in samp){
+    xpredS <- (X[,1]*draws$betaU[ss,1]+X[,2]*draws$betaU[ss,2])/sdEta
+    lines(sort(dat$xirt),xpredS[order(dat$xirt)],col=adjustcolor('pink',0.5))
+}
+lines(sort(dat$xirt),xpred[order(dat$xirt)],lwd=2)
+legend('bottomright',legend=c('Treated','Control (Imputed)','Model (Avg.)','Model (draws)'),col=c('blue','red','black','pink'),pch=c('o','o','.','.'),lwd=c(0.01,0.01,2,2))
+dev.off()
+
+@
+
+\subsection{CTAI Treatment Effects}
+
+<<trtEff,results='hide'>>=
+pdf('figure/potentialOutcomes.pdf')
+set.seed(613)
+samp <- sample(1:nrow(draws$studEff),1000)
+stEf <- draws$studEff[samp,]
+studEff95 <- quantile(stEf,c(0.025,0.975))
+stEf[stEf<studEff95[1] | stEf>studEff95[2]] <- NA
+trtEff <- sweep(sweep(stEf,1,draws$b1[samp],'*'),1,draws$b0[samp],'+')
+
+plot(1,1,type='n',ylim=range(trtEff,na.rm=TRUE),
+      xlim=studEff95,xlab=expression(eta[T]),ylab='Treatment Effect',cex.lab=2)
+sapply(samp,function(rr) invisible(abline(draws$b0[rr],draws$b1[rr],col=adjustcolor('red',.3))))
+abline(mean(draws$b0),mean(draws$b1),lwd=3)
+legend('topright',legend=c('Mean Est. Effect','MCMC Draws'),lty=1,col=c('black','red'))
+dev.off()
+
+pdf('figure/potentialOutcomes.pdf')
+a0 <- rnorm(length(draws$a1),mean(sdat$Y[sdat$Z==0]),sd(sdat$Y[sdat$Z==0])/sqrt(sum(sdat$Z==0)))
+a1 <- draws$a1
+b0 <- draws$b0
+b1 <- draws$b1
+
+
+xx <- seq(studEff95[1],studEff95[2],length=100)
+Yc <- outer(a1,xx)
+Yc <- sweep(Yc,1,a0,'+')
+
+YcUp <- apply(Yc,2,function(x) quantile(x,0.975))
+YcDown <- apply(Yc,2,function(x) quantile(x,0.025))
+
+
+Yt <- outer(a1+b1,xx)
+Yt <- sweep(Yt,1,a0+b0,'+')
+YtUp <- apply(Yt,2,function(x) quantile(x,0.975))
+YtDown <- apply(Yt,2,function(x) quantile(x,0.025))
+
+
+curve(mean(a0)+mean(a1)*x,from=min(xx), to=max(xx),lwd=2,col='red',xlab=expression(eta[T]),ylab=expression(paste('E[',Y[Z],'|',eta[T],']',sep='')),ylim=range(c(YtDown,YcDown,YtUp,YcUp)))
+
+curve(mean(a0)+mean(b0)+(mean(b1)+mean(a1))*x,add=TRUE,lwd=2,col='blue')
+polygon(c(xx,rev(xx)),c(YcUp,rev(YcDown)),col=adjustcolor('red',0.1))
+polygon(c(xx,rev(xx)),c(YtUp,rev(YtDown)),col=adjustcolor('blue',0.1))
+
+ legend('topleft',legend=c(expression(Y[C]),expression(Y[T])),col=c('red','blue'),lwd=2)
+ dev.off()
+@
+
+
 
 
 \end{document}

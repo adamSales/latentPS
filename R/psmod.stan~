@@ -29,6 +29,7 @@ parameters{
  vector[ncov] betaU;
  vector[ncov] betaY;
 
+ real a0;
  real a1;
  real b0;
  real b1;
@@ -62,7 +63,7 @@ model{
   linPred[i]= secEff[section[i]]+studEff[studentM[i]];
 
  for(i in 1:nstud){
-  useEff[i]=a1*studEff[i];
+  useEff[i]=a0+a1*studEff[i];
   trtEff[i]=b0+b1*studEff[i];
   muU[i]=teacherEffU[teacher[i]]+schoolEffU[school[i]];
   muY[i]=teacherEffY[teacher[i]]+schoolEffY[school[i]]+pairEffect[pair[i]]+useEff[i]+Z[i]*trtEff[i];
@@ -74,6 +75,7 @@ model{
  betaU~normal(0,2);
  pairEffect~normal(0,2);
 
+ a0~normal(0,1);
  a1~normal(0,1);
  b0~normal(0,1);
  b1~normal(0,1);
