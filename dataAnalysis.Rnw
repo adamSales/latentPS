@@ -28,6 +28,8 @@ opts_chunk$set(
 echo=TRUE,results='asis',warning = FALSE,message = FALSE,cache=TRUE,error = FALSE
 )
 
+if(!exists('runMods')) runMods <- FALSE
+
 @
 
 
@@ -123,8 +125,11 @@ $\epsilon^{Ys}_{s[i]}$ is a normally distributed error at the school
 level, and the rest of the variables are analogous to those in
 (\ref{eq:mbarUsage}).
 We run the model with the \texttt{stan} command from \texttt{rstan}:
-<<mbarModel,dependson='obsData'>>=
+<<mbarModel,dependson='obsData',eval=runMods>>=
 mbarMod <- stan('R/psmodObs.stan',data=sdatObs,seed=613)
+@
+<<loadMbarModel,eval=!exists('mbarModel')>>=
+
 @
 
 Figure \ref{fig:mbarModel} can be replicated with the following code:
@@ -178,7 +183,7 @@ This section reproduces our paper's main model, described in Section \ref{sec:th
 The data for the main model (similar to the $\bar{m}$ model but
 including student-section level mastery data) relies on a secondary
 file (available at github):
-<<prelimMain,dependson='data'>>=
+<<prelimMain,dependson='data',cache=FALSE,eval=(nrow(dat)!=5308)>>=
 source('R/prelimStan.r')
 @
 
@@ -192,8 +197,40 @@ cat(readLines('R/psmod.stan'),sep='\n')
 \end{verbatim}
 
 This code runs the model:
-<<runmainModel,dependson='prelimMain'>>=
+<<runmainModel,dependson='prelimMain',eval=runMods,cache=FALSE>>=
 main <- stan('R/psmod.stan',data =sdat,warmup=1500,chains=10,iter=5000)
+save(main,file='output/mainModel.RData')
+@
+
+
+
+<<saveSmallMain,eval=runMods,cache=FALSE>>=
+draws <- extract(main)
+
+### for "multImp" and "trtEff"
+set.seed(613)
+U <- draws$studEff
+Usamp <- U[sample(1:nrow(U),1000),]
+
+### for sampleSizeEta & etaDiff
+draw <- 1000
+U <- U[,sort(unique(sdat$studentM))]
+eta <- U[draw,]
+etasd <- apply(U,2,sd)
+
+### for "usageModel"
+sdEta <- sqrt(mean(apply(draws$studEff,1,var)))
+Eeta <- colMeans(draws$studEff)
+
+draws$studEff <- Usamp
+
+summMain <- summary(main)[[1]]
+
+save(draws,draw,eta,etasd,sdEta,Eeta,summMain,Usamp,file='output/smallMain.RData')
+@
+
+<<loadMain,echo=FALSE,eval=!exists('draws'),cache=FALSE>>=
+load('output/smallMain.RData')
 @
 
 \section{Multiple Imputation Model Fit}
@@ -206,12 +243,12 @@ First, extract 1000 random draws of $\eta_T$ (denoted as
 \texttt{studEff} in the model code) from the fitted model.
 Then, for each draw, fit a standard HLM interacting treatment with the
 $\eta_T$ draw.
-<<multImp>>=
+<<multImp,dependson='prelimMain'>>=
 library(lme4)
 set.seed(613)
-U <- extract(main,'studEff')[[1]]
-
-multImp <- apply(U[sample(1:nrow(U),1000),],1,
+## U <- extract(main,'studEff')[[1]]
+## Usamp <- U[sample(1:nrow(U),1000),]
+multImp <- apply(Usamp,1,
                  function(u) summary(
                                  lmer(Y~treatment*u+poly(xirt,2)+race+sex+spec+state+(1|schoolid2)+(1|teachid2),
                                       data=dat))$coef['treatment:u',])
@@ -225,7 +262,8 @@ mean(multImp['Estimate',])
 sqrt(var(multImp['Estimate',])+mean(multImp['Std. Error',]^2))
 
 ## now for the main model:
-summary(main,par='b1',probs=c())[[1]]
+## summary(main,par='b1',probs=c())[[1]]
+summMain['b1',c(1:3,9:10)]
 @
 
 \section{Figures Comparing PS with $\bar{m}_T$ to PS with $\eta$}
@@ -263,12 +301,12 @@ setwd('figure'); tools::texi2dvi('mbarSampleSize.tex', pdf = T, clean = T); setw
 
 Figure \ref{fig:etaSampleSize}:
 <<sampleSizeEta>>=
+## draw <- 1000
 sdatLat <- sdat
 nsec <- as.vector(table(sdatLat$studentM))
-etaDraws <- extract(main,'studEff')[[1]][,sort(unique(sdatLat$studentM))]
-eta <- colMeans(etaDraws)
-eta <- etaDraws[draw,]
-etasd <- apply(etaDraws,2,sd)
+## etaDraws <- extract(main,'studEff')[[1]][,sort(unique(sdatLat$studentM))]
+## eta <- etaDraws[draw,]
+## etasd <- apply(etaDraws,2,sd)
 
 plotDat <- data.frame(nsec=nsec,eta=eta,etasd=etasd)
 
@@ -289,7 +327,7 @@ setwd('figure'); tools::texi2dvi('etaSampleSize.tex', pdf = T, clean = T); setwd
 
 Figure \ref{fig:mbarDiff}:
 <<mbarDiff>>=
-secDiff <- -extract(main,'secEff')[[1]][draw,]
+secDiff <- -draws$secEff[draw,]
 sss <- secDiff[sdatLat$sec]
 mDiff <- aggregate(sss,list(stud=sdatLat$studentM),mean)
 mbar <- aggregate(sdatLat$grad,list(sdatLat$studentM),mean)
@@ -326,30 +364,32 @@ setwd('figure'); tools::texi2dvi('etaDiff.tex', pdf = T, clean = T); setwd('..')
 
 \section{Main Model Results}
 Get all the MCMC draws from the main model:
-<<mainDraws>>=
-draws <- extract(main)
-@
+% <<mainDraws>>=
+% draws <- extract(main)
+% @
 \subsection{Predicting Mastery}
 <<usageModel>>=
 library(coefplot)
 
-coefs <- summary(main,'betaU')[[1]]
+## coefs <- summary(main,'betaU')[[1]]
+coefs <- summMain[grep('betaU',rownames(summMain)),]
 rownames(coefs) <- colnames(sdat$X)
 
 ## sqrt of average (over the draws) of the variance of eta
-sdEta <- sqrt(mean(apply(draws$studEff,1,var)))
+## sdEta <- sqrt(mean(apply(draws$studEff,1,var)))
 
 coefs <- coefs/apply(sdat$X,2,sd)/sdEta
 
-cpdf <- data.frame(Value=coefs[3:7,1],Coefficient=c('Black/Multiracial','Hispanic/Native American','Male','Special Ed.','Gifted'),HighInner=coefs[3:7,'75%'],LowInner=coefs[3:7,'25%'],HighOuter=coefs[3:7,'97.5%'],LowOuter=coefs[3:7,'2.5%'],Model='model')
+cpdf <- data.frame(Value=coefs[3:7,1],Coefficient=c('Black/\n Multiracial','Hispanic/\n Native American','Male','Special Ed.','Gifted'),HighInner=coefs[3:7,'75%'],LowInner=coefs[3:7,'25%'],HighOuter=coefs[3:7,'97.5%'],LowOuter=coefs[3:7,'2.5%'],Model='model')
 
-coefplot.data.frame(cpdf,title=NULL,xlab=expression(hat(beta)[std]),ylab=NULL)+theme(text=element_text(size=20))
-ggsave('figure/usageCoef.pdf',width=3,height=3)
+coefplot.data.frame(cpdf,title=NULL,xlab=expression(hat(beta)[std]),ylab=NULL,lwdOuter=0.5,lwdInner=1.5)+theme(text=element_text(size=12))
+ggsave('figure/usageCoef.pdf',width=6,height=3)
 
 pdf('figure/pretestEta.pdf')
 omar <- par()$mar
 par(mar=omar+c(0,1,-1,0))
-plot(dat$xirt,colMeans(draws$studEff)/sdEta,col=ifelse(dat$treatment==1,'blue','red'),
+## Eeta <- colMeans(draws$studEff)
+plot(dat$xirt,Eeta/sdEta,col=ifelse(dat$treatment==1,'blue','red'),
      xlab='Pretest (std)',ylab=expression(paste('E[',eta[T],'|x]')),cex.lab=2)
 X <- scale(model.matrix(~poly(xirt,2),data=dat)[,-1])
 xpred <- (X[,1]*mean(draws$betaU[,1])+X[,2]*mean(draws$betaU[,2]))/sdEta
@@ -370,11 +410,11 @@ dev.off()
 <<trtEff,results='hide'>>=
 pdf('figure/treatmentEffects.pdf')
 set.seed(613)
-samp <- sample(1:nrow(draws$studEff),1000)
-stEf <- draws$studEff[samp,]
-studEff95 <- quantile(stEf,c(0.025,0.975))
-stEf[stEf<studEff95[1] | stEf>studEff95[2]] <- NA
-trtEff <- sweep(sweep(stEf,1,draws$b1[samp],'*'),1,draws$b0[samp],'+')
+## samp <- sample(1:nrow(draws$studEff),1000)
+## Usamp <- draws$studEff[samp,]
+studEff95 <- quantile(Usamp,c(0.025,0.975))
+Usamp[Usamp<studEff95[1] | Usamp>studEff95[2]] <- NA
+trtEff <- sweep(sweep(Usamp,1,draws$b1[samp],'*'),1,draws$b0[samp],'+')
 
 plot(1,1,type='n',ylim=range(trtEff,na.rm=TRUE),
       xlim=studEff95,xlab=expression(eta[T]),ylab='Treatment Effect',cex.lab=2)
@@ -416,6 +456,27 @@ polygon(c(xx,rev(xx)),c(YtUp,rev(YtDown)),col=adjustcolor('blue',0.1))
 \includegraphics{figure/treatmentEffects.pdf}
 \includegraphics{figure/potentialOutcomes.pdf}
 
+\subsection{Fake Models}
+<<>>=
+load('../advance/fittedModels/noEffect.RData')
+
+plotFake <- function(fakeMod,expr){
+ set.seed(613)
+ draws <- extract(fakeMod)
+ samp <- sample(1:nrow(draws$studEff),1000)
+ Usamp <- draws$studEff[samp,]
+ studEff95 <- quantile(Usamp,c(0.025,0.975))
+ Usamp[Usamp<studEff95[1] | Usamp>studEff95[2]] <- NA
+ trtEff <- sweep(sweep(Usamp,1,draws$b1[samp],'*'),1,draws$b0[samp],'+')
+
+ plot(1,1,type='n',ylim=range(trtEff,na.rm=TRUE),
+      xlim=studEff95,xlab=expression(eta[T]),ylab='Treatment Effect',cex.lab=2)
+ sapply(samp,function(rr) invisible(abline(draws$b0[rr],draws$b1[rr],col=adjustcolor('red',.3))))
+ abline(mean(draws$b0),mean(draws$b1),lwd=3)
+ curve(expr,add=TRUE,lwd=3,lty=2,from=studEff95[1]-1,to=studEff95[2]+1)
+ legend('topright',legend=c('Mean Est. Effect','MCMC Draws','True Effect'),lty=c(1,1,2),col=c('black','red','black'))
+}
+@
 
 
 \end{document}

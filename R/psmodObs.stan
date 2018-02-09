@@ -35,7 +35,7 @@ parameters{
  vector[ncov] betaU;
  vector[ncov] betaY;
 
- real a0;
+// real a0;
  real a1;
  real b0;
  real b1;
@@ -64,18 +64,18 @@ model{
  vector[nstudC] muUc;
 
  for(i in 1:nstudTO){
-  muYtO[i]=teacherEffY[teacherTO[i]]+schoolEffY[schoolTO[i]]+pairEffect[pairTO[i]]+a0+b0+(a1+b1)*MbarTO[i];
+  muYtO[i]=teacherEffY[teacherTO[i]]+schoolEffY[schoolTO[i]]+pairEffect[pairTO[i]]+b0+(a1+b1)*MbarTO[i];
   muUtO[i]=teacherEffU[teacherTO[i]];
  }
 
  for(i in 1:nstudTM){
-  muYtM[i]=teacherEffY[teacherTM[i]]+schoolEffY[schoolTM[i]]+pairEffect[pairTM[i]]+a0+b0+(a1+b1)*MbarTM[i];
+  muYtM[i]=teacherEffY[teacherTM[i]]+schoolEffY[schoolTM[i]]+pairEffect[pairTM[i]]+b0+(a1+b1)*MbarTM[i];
   muUtM[i]=teacherEffU[teacherTM[i]];
  }
 
 
  for(i in 1:nstudC){
-  muYc[i]=teacherEffY[teacherC[i]]+schoolEffY[schoolC[i]]+pairEffect[pairC[i]]+a0+a1*MbarC[i];
+  muYc[i]=teacherEffY[teacherC[i]]+schoolEffY[schoolC[i]]+pairEffect[pairC[i]]+a1*MbarC[i];
   muUc[i]=teacherEffU[teacherC[i]];
  }
 
@@ -84,7 +84,7 @@ model{
  betaU~normal(0,2);
  pairEffect~normal(0,2);
 
- a0~normal(0,1);
+// a0~normal(0,1);
  a1~normal(0,1);
  b0~normal(0,1);
  b1~normal(0,1);

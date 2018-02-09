@@ -52,6 +52,11 @@ data/advanceData.RData
 R/#prelimMbar.r#
 *.r~
 
+*.RData
+*.tex
+*~
+#*
+
 cache/*
 data/HSdata.RData
 dataAnalysis.aux
@@ -59,7 +64,3 @@ dataAnalysis.out
 
 .#*
 dataAnalysis-tikzDictionary
-output/mbarMod.RData
-*.tex
-dataAnalysis.tex
-figure/mbarModel.tex

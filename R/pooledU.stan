@@ -29,29 +29,30 @@ parameters{
  vector[ncov] betaU;
  vector[ncov] betaY;
 
+// real a0;
  real a1;
  real b0;
  real b1;
 
  real teacherEffY[nteacher];
- real teacherEffU[nteacher];
+// real teacherEffU[nteacher];
  real pairEffect[npair];
- real schoolEffU[nschool];
+// real schoolEffU[nschool];
  real schoolEffY[nschool];
  real secEff[nsec];
 
  real<lower=0> sigTchY;
  real<lower=0> sigSclY;
  real<lower=0> sigY[2];
- real<lower=0> sigTchU;
- real<lower=0> sigSclU;
+ //real<lower=0> sigTchU;
+ //real<lower=0> sigSclU;
  real<lower=0> sigU;
 }
 
 model{
  real linPred[nsecWorked];
  vector[nstud] muY;
- vector[nstud] muU;
+ //vector[nstud] muU;
  real useEff[nstud];
  real trtEff[nstud];
  real sigYI[nstud];
@@ -64,7 +65,7 @@ model{
  for(i in 1:nstud){
   useEff[i]=a1*studEff[i];
   trtEff[i]=b0+b1*studEff[i];
-  muU[i]=teacherEffU[teacher[i]]+schoolEffU[school[i]];
+  //muU[i]=teacherEffU[teacher[i]]+schoolEffU[school[i]];
   muY[i]=teacherEffY[teacher[i]]+schoolEffY[school[i]]+pairEffect[pair[i]]+useEff[i]+Z[i]*trtEff[i];
   sigYI[i]=sigY[Z[i]+1];
  }
@@ -74,25 +75,19 @@ model{
  betaU~normal(0,2);
  pairEffect~normal(0,2);
 
+// a0~normal(0,1);
  a1~normal(0,1);
  b0~normal(0,1);
  b1~normal(0,1);
 
 
  schoolEffY~normal(0,sigSclY);
- schoolEffU~normal(0,sigSclU);
- teacherEffU~normal(0,sigTchU);
+ //schoolEffU~normal(0,sigSclU);
+ //teacherEffU~normal(0,sigTchU);
  teacherEffY~normal(0,sigTchY);
 
  grad~bernoulli_logit(linPred);
 
- studEff~normal(muU+X*betaU,sigU);
+ studEff~normal(X*betaU,sigU);
  Y~normal(muY+X*betaY,sigYI);
-}
-generated quantities{
- int<lower=0,upper=1> gradRep[nsecWorked];
- real Yrep[nstud];
-
- gradRep=bernoulli_logit_rng(linPred);
- Yrep = normal_rng(muY+X*betaY,sigYI);
 }
