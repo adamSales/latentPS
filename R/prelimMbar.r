@@ -126,8 +126,9 @@ makeStanDatObs <- function(dat){
  stanDat
 }
 
-datObs <- dataPrepObs(dat,advance)
-
+if(exists('datOrig')){
+ datObs <- dataPrepObs(datOrig,advanceOrig)
+} else datObs <- dataPrepObs(dat,advance)
 sdatObs <- makeStanDatObs(datObs)
 
 #NOT RUN:

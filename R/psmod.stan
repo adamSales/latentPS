@@ -90,9 +90,11 @@ model{
  Y~normal(muY+X*betaY,sigYI);
 }
 generated quantities{
- int<lower=0,upper=1> gradRep[nsecWorked];
+// int<lower=0,upper=1> gradRep[nsecWorked];
  real Yrep[nstud];
 
- gradRep=bernoulli_logit_rng(linPred);
- Yrep = normal_rng(muY+X*betaY,sigYI);
+// gradRep=bernoulli_logit_rng(linPred);
+ for(i in 1:nstud)
+  Yrep[i] = normal_rng(teacherEffY[teacher[i]]+schoolEffY[school[i]]+pairEffect[pair[i]]+a1*studEff[i]+Z[i]*(b0+b1*studEff[i])+X[i,]*betaY,sigY[Z[i]+1]);
 }
+
