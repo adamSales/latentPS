@@ -64,3 +64,12 @@ dataAnalysis.out
 
 .#*
 dataAnalysis-tikzDictionary
+*.tex
+*.tex
+figure/mbarDiff.tex
+*.tex
+figure/mbarDiff.tex
+*.tex
+*.r#
+*.rds
+R/psmod.stan~

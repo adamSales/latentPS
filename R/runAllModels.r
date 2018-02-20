@@ -35,7 +35,7 @@ if(exists('runNoTeach') ) if( runNoTeach){
 
 ### pooled usage data
 if(exists('runPooledU')) if( runPooledU){
- stanModPooledU <- stan('R/pooledU.stan',pars=c('a1','b0','b1'),data=sdat,warmup=1500,iter=3000,chains=4)
+ pooledU <- stan('R/pooledU.stan',pars=c('a1','b0','b1'),data=sdat,warmup=1500,iter=3000,chains=4)
  save(pooledU,sdat,file='output/pooledU.RData'); rm(pooledU); gc()
 }
 
@@ -60,7 +60,7 @@ source('R/prelimMbar.r')
 
 ## BC model
 if(exists('runBC')) if(runBC){
- bcMod <- stan('R/psmodBC.stan',pars=c('a1','b0','b1','lambda'),data=sdat); save(bcMod,sdat,file='output/bcModel.RData')
+ bcMod <- stan('R/psmodBC.stan',data=sdat,iter=4000,warmup=1500,chains=6); save(bcMod,sdat,file='output/bcModel.RData')
  rm(bcMod);gc()
 }
 
@@ -78,4 +78,8 @@ if(exists('runFake')) if(runFake){
 
 if(exists('runFakeBS')) if(runFakeBS){
  source('R/fakeModelsStanBS.r')
+}
+
+if(exists('runFakeBSBC')) if(runFakeBSBC){
+ source('R/fakeModelsStanBSBC.r')
 }
