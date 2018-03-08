@@ -107,21 +107,42 @@ mbarDiffDat <- data.frame(mbar=mbar$x,mDiff=mDiff$x)
 results$mbarDiffCor <- sprintf('%.2f',with(mbarDiffDat,cor(mbar,mDiff,method='spearman')))
 
 ## covariates
-perExp1 <- with(draws,apply(betaU,1,function(b) var(sdat$X%*%b)))
-perExp <- perExp1/(perExp1 +draws$sigU^2)
-results$perExp <- mean(perExp)
+Eeta <- colMeans(draws$studEff)
+fittedEta <- colMeans(draws$betaU%*%t(sdat$X))
+results$perVarExp <- round(cor(fittedEta[sdat$Z==1],Eeta[sdat$Z==1])^2*100)
 
 ## main results
-results$perRunNeg <- mean(draws$b1<0)
+results$perRunNeg <- round(mean(draws$b1<0)*100)
 
 ## compared to ATE
 trtEff <- sweep(sweep(draws$studEff,1,draws$b1,'*'),1,draws$b0,'+')
-ate <- mean(trt)
+ate <- mean(trtEff)
 
-sdEta <- apply(draws$studEff,1,sd)
-b1Std <- draws$b1/sdEta/ate
+perChange <- sapply(1:nrow(draws$studEff),
+                   function(i) (draws$b1[i]*quantile(draws$studEff[i,],0.75)+draws$b0[i])/
+                               (draws$b1[i]*quantile(draws$studEff[i,],0.25)+draws$b0[i]))
+pc <- perChange-1
+
+iqrEta <- apply(draws$studEff,1,IQR)
+b1Std <- draws$b1*iqrEta/ate
+
+results$b1Mean <- round(mean(b1Std)*100)
+results$b1sd <- round(sd(b1Std)*100)
+results$b195L <- round(quantile(b1Std,0.025)*100)
+results$b195H <- round(quantile(b1Std,0.975)*100)
+
+## latent dimensionality?
+source('R/ppcDim.r')
+results$dimPval <- round(median(PPP[upper.tri(PPP)]),2)
+
+## hard sections?
+load('output/hardSections.RData')
+hardB1 <- rstan::summary(hard,par='b1',prob=c())
+results$hardSecB1Mean <- round(hardB1[[1]][1,'mean'],2)
+results$hardSecB1SD <- round(hardB1[[1]][1,'sd'],2)
 
 ### save it all
 attach(results)
 save(list=names(results),file='output/results.RData')
+try(save(list=names(results),file='../advance/results.RData'))
 detach(results)

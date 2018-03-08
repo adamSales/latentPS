@@ -71,6 +71,45 @@ if(exists('runFull')) if(runFull){
  full <- stan('R/psmod.stan',pars=c('a1','b0','b1'),data=sdat); save(full,file='output/fullMod.RData')
 }
 
+## raw scores
+if(exists('runRaw')) if(runRaw){
+ hs2 <- read.csv('~/Box Sync/CT/data/RANDstudyData/H2_algebra_rcal_20121119_fieldid.csv')
+ datRaw <- dat
+ datRaw$Y <- hs2$t2score[match(datRaw$field_id,hs2$field_id)]
+ sdatRaw <- makeStanDat(datRaw,advance)
+ raw <- stan('R/psmod.stan',pars=c('a1','b0','b1'),data=sdatRaw,iter=4000,warmup=1500,chains=6); save(raw,sdatRaw,file='output/rawMod.RData')
+ rm(raw);gc()
+}
+
+if(exists('runRawBC')) if(runRawBC){
+ hs2 <- read.csv('~/Box Sync/CT/data/RANDstudyData/H2_algebra_rcal_20121119_fieldid.csv')
+ datRaw <- dat
+ datRaw$Y <- hs2$t2score[match(datRaw$field_id,hs2$field_id)]
+ datRaw$Y <- datRaw$Y/sd(datRaw$Y)
+ sdatRaw <- makeStanDat(datRaw,advance)
+ rawbc <- stan('R/psmodBC.stan',pars=c('a1','b0','b1','lambda'),data=sdatRaw,iter=4000,warmup=1500,chains=6); save(rawbc,sdatRaw,file='output/rawModBC.RData')
+ rm(rawbc);gc()
+}
+
+if(exists('runRawSimp')) if(runRawSimp){
+ hs2 <- read.csv('~/Box Sync/CT/data/RANDstudyData/H2_algebra_rcal_20121119_fieldid.csv')
+ datRaw <- dat
+ datRaw$Y <- hs2$t2score[match(datRaw$field_id,hs2$field_id)]
+ #datRaw <- subset(datRaw,Y>0) ## delete 8 cases, 6 ctl, 2 trt
+ sdatRaw <- makeStanDat(datRaw,advance)
+ bc <- with(sdatRaw,MASS::boxcox(Y[Y>0]~X[Y>0,]+Z[Y>0]+factor(teacher[Y>0])))
+ lambda <- bc$x[which.max(bc$y)] #0.5455
+ sdatRaw <- within(sdatRaw,{
+     Y <- (Y^lambda-1)/lambda
+     sdPooled <- sqrt(((sum(Z)-1)*var(Y[Z==1])+(sum(Z==0)-1)*var(Y[Z==0]))/(nstud-2))
+     Y <- Y/sdPooled })
+ rawbc2 <- stan('R/psmod.stan',pars=c('a1','b0','b1'),data=sdatRaw,iter=4000,warmup=1500,chains=6); save(rawbc2,sdatRaw,file='output/rawModBC2.RData')
+
+}
+
+if(exists('runMS')) if(runMS)
+ source('R/ms.r')
+
 ## fake
 if(exists('runFake')) if(runFake){
  source('R/fakeModelsStan.r')
