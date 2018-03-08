@@ -71,9 +71,12 @@ sprintf('%.2f',balTest$results['xirt','Treatment','Unstrat']),'& ',stdDiff['xirt
 \\end{tabular}\n',sep='',file='output/covariateTable.tex')
 
 
-### treatment students w/ usage data
+### control students w/ usage data
 results$numCtlUse <- sum(dat$field_id[dat$treatment==0]%in%advanceOrig$field_id)
 results$perCtlUse <- round(results$numCtlUse/sum(dat$treatment==0)*100)
+
+### percent of treatment students with observed mastery data
+results$propObs <- round(mean(dat$field_id[dat$treatment==1]%in%advance$field_id)*100)
 
 ### sample sizes
 results$ntot <- nrow(dat)
@@ -103,8 +106,20 @@ mbarDiffDat <- data.frame(mbar=mbar$x,mDiff=mDiff$x)
 
 results$mbarDiffCor <- sprintf('%.2f',with(mbarDiffDat,cor(mbar,mDiff,method='spearman')))
 
+## covariates
+perExp1 <- with(draws,apply(betaU,1,function(b) var(sdat$X%*%b)))
+perExp <- perExp1/(perExp1 +draws$sigU^2)
+results$perExp <- mean(perExp)
 
+## main results
+results$perRunNeg <- mean(draws$b1<0)
 
+## compared to ATE
+trtEff <- sweep(sweep(draws$studEff,1,draws$b1,'*'),1,draws$b0,'+')
+ate <- mean(trt)
+
+sdEta <- apply(draws$studEff,1,sd)
+b1Std <- draws$b1/sdEta/ate
 
 ### save it all
 attach(results)
