@@ -1,16 +1,18 @@
 source('R/prelimStan.r')
 
+if(!exists('allModels')) allModels <- FALSE
+
 #### first main model
-if(exists('runMain')) if(runMain){
+if(allModels | exists('runMain')) if(allModels|runMain){
  main <- stan('R/psmod.stan',data=sdat,warmup=1500,chains=10,iter=5000)
 
 ## cat('\n\n\n\n',rep('-',40),'\n','MAIN MODEL',rep('-',40),'\n\n\n')
 ## print(main,c('a0','a1','b0','b1'),c(0.05,0.95))
 
- save(main,sdat,file='output/stanMod.RData'); rm(main); gc();
+ save(main,sdat,file='output/mainMod.RData'); rm(main); gc();
 }
 
-if(exists('runInt') ) if( runInt){
+if(allModels | exists('runInt') ) if(allModels| runInt){
  ### interactions model
  sdatInt <- makeStanDat(dat,advance,xInteract=TRUE)
  xint <- stan('R/psmod.stan',pars=c('a1','b0','b1'),data=sdatInt,warmup=1500,iter=5000,chains=4)
@@ -19,7 +21,7 @@ if(exists('runInt') ) if( runInt){
  save(xint,sdatInt,file='output/xInteractions.RData'); rm(xint); gc()
 }
 
-if(exists('runHard') ) if( runHard){
+if(allModels | exists('runHard') ) if(allModels| runHard){
 ### only sections with hints
  source('R/hardSections.r')
 #cat('\n\n\n\n',rep('-',40),'\n','HARD SECTIONS',rep('-',40),'\n\n\n')
@@ -28,51 +30,51 @@ if(exists('runHard') ) if( runHard){
 }
 ### no teacher
 
-if(exists('runNoTeach') ) if( runNoTeach){
+if(allModels | exists('runNoTeach') ) if(allModels| runNoTeach){
  noTeach <- stan('R/psmodNoTeacher.stan',pars=c('a1','b0','b1'),,data=sdat,warmup=1500,iter=3000,chains=4)
  save(noTeach,sdat,file='output/modNoTeacher.RData'); rm(noTeach); gc()
 }
 
 ### pooled usage data
-if(exists('runPooledU')) if( runPooledU){
+if(allModels | exists('runPooledU')) if(allModels| runPooledU){
  pooledU <- stan('R/pooledU.stan',pars=c('a1','b0','b1'),data=sdat,warmup=1500,iter=3000,chains=4)
  save(pooledU,sdat,file='output/pooledU.RData'); rm(pooledU); gc()
 }
 
 ## 2PL
-if(exists('run2pl')) if(run2pl){
+if(allModels | exists('run2pl')) if(allModels|run2pl){
  stanMod2pl <- stan('R/psmod2pl.stan',pars=c('a1','b0','b1','studEff'),data=sdat,warmup=1500,iter=5000,chains=4)
  save(stanMod2pl,sdat,file='output/stanMod2pl.RData'); rm(stanMod2pl); gc()
 }
 
 ## 3PL
-if(exists('run3pl')) if(run3pl){
+if(allModels | exists('run3pl')) if(allModels|run3pl){
  stanMod3pl <- stan('R/psmod3pl.stan',pars=c('a1','b0','b1','studEff'),data=sdat,warmup=1500,iter=5000,chains=4)
  save(stanMod3pl,sdat,file='output/stanMod3pl.RData'); rm(stanMod3pl); gc()
 }
 
 ## mbarModel
-if(exists('runMbar')) if(runMbar){
+if(allModels | exists('runMbar')) if(allModels|runMbar){
 source('R/prelimMbar.r')
  mbarMod <- stan('R/psmodObs.stan',data=sdatObs); save(mbarMod,sdatObs,file='output/mbarModel.RData')
  rm(mbarMod); gc()
 }
 
 ## BC model
-if(exists('runBC')) if(runBC){
+if(allModels | exists('runBC')) if(allModels|runBC){
  bcMod <- stan('R/psmodBC.stan',data=sdat,iter=4000,warmup=1500,chains=6); save(bcMod,sdat,file='output/bcModel.RData')
  rm(bcMod);gc()
 }
 
 ## full data
-if(exists('runFull')) if(runFull){
+if(allModels | exists('runFull')) if(allModels|runFull){
  totDatFull <- dataPrep(datOrig,advanceOrig,discard=FALSE)
  sdatFull <- makeStanDat(totDatFull$dat,totDatFull$advance)
  full <- stan('R/psmod.stan',pars=c('a1','b0','b1'),data=sdat); save(full,file='output/fullMod.RData')
 }
 
 ## raw scores
-if(exists('runRaw')) if(runRaw){
+if(allModels | exists('runRaw')) if(allModels|runRaw){
  hs2 <- read.csv('~/Box Sync/CT/data/RANDstudyData/H2_algebra_rcal_20121119_fieldid.csv')
  datRaw <- dat
  datRaw$Y <- hs2$t2score[match(datRaw$field_id,hs2$field_id)]
@@ -81,7 +83,7 @@ if(exists('runRaw')) if(runRaw){
  rm(raw);gc()
 }
 
-if(exists('runRawBC')) if(runRawBC){
+if(allModels | exists('runRawBC')) if(allModels|runRawBC){
  hs2 <- read.csv('~/Box Sync/CT/data/RANDstudyData/H2_algebra_rcal_20121119_fieldid.csv')
  datRaw <- dat
  datRaw$Y <- hs2$t2score[match(datRaw$field_id,hs2$field_id)]
@@ -91,7 +93,7 @@ if(exists('runRawBC')) if(runRawBC){
  rm(rawbc);gc()
 }
 
-if(exists('runRawSimp')) if(runRawSimp){
+if(allModels | exists('runRawSimp')) if(allModels|runRawSimp){
  hs2 <- read.csv('~/Box Sync/CT/data/RANDstudyData/H2_algebra_rcal_20121119_fieldid.csv')
  datRaw <- dat
  datRaw$Y <- hs2$t2score[match(datRaw$field_id,hs2$field_id)]
@@ -107,18 +109,18 @@ if(exists('runRawSimp')) if(runRawSimp){
 
 }
 
-if(exists('runMS')) if(runMS)
+if(allModels | exists('runMS')) if(allModels|runMS)
  source('R/ms.r')
 
 ## fake
-if(exists('runFake')) if(runFake){
+if(allModels | exists('runFake')) if(allModels|runFake){
  source('R/fakeModelsStan.r')
 }
 
-if(exists('runFakeBS')) if(runFakeBS){
+if(allModels | exists('runFakeBS')) if(allModels|runFakeBS){
  source('R/fakeModelsStanBS.r')
 }
 
-if(exists('runFakeBSBC')) if(runFakeBSBC){
+if(allModels | exists('runFakeBSBC')) if(allModels|runFakeBSBC){
  source('R/fakeModelsStanBSBC.r')
 }

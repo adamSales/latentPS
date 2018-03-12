@@ -47,6 +47,7 @@ save(draws,draw,eta,etasd,sdEta,Eeta,summMain,Usamp,file='output/smallMain.RData
 
 
 
+
 ########################
 ###  Mbar model figure
 ########################
@@ -374,3 +375,151 @@ print(ggplot(pd)+
 setwd('figure'); tools::texi2dvi('fakePlots.tex', pdf = T, clean = T); setwd('..')
 
 
+#########################################
+### eta_T vs Y
+#########################################
+
+
+plotDat <- with(sdat,data.frame(Y=Y,eta=draws$studEff[draw,],Z=Z))
+plotDat$treat <- ifelse(plotDat$Z==1,'Treatment','Control')
+plotDat$slope <- ifelse(plotDat$treat=='Control',draws$a1[draw],draws$a1[draw]+draws$b1[draw])
+plotDat$int <- ifelse(plotDat$treat=='Control',0,draws$b0[draw])
+
+plotDat <- within(plotDat, int <- int-( mean(int+slope*eta)-mean(plotDat$Y)))
+#plotDat <- plotDat[order(plotDat$treat),]
+plotDat$treat2 <- plotDat$treat
+
+tikz(file = "figure/etaModel.tex",
+  standAlone = T,
+  width  = 6, height  = 3)
+print(ggplot(plotDat,aes(eta,Y,fill=treat,group=treat,color=treat))+geom_point(size=2,alpha=0.4)+geom_smooth(aes(linetype=treat2),color='black',se=FALSE,size=2,alpha=1,method='lm')+coord_cartesian(xlim=quantile(plotDat$eta,c(0.005,0.995)),ylim=quantile(plotDat$Y,c(0.005,0.995)))+
+#    geom_abline(aes(intercept=int,slope=slope,linetype=treat2),color='black',size=2,alpha=1)+scale_alpha_discrete(range=c(0.4,.8))+
+    scale_colour_manual(values=c('red','blue'))+
+    labs(group=NULL,fill=NULL,alpha=NULL)+xlab('$\\eta_T$')+
+    ylab('Posttest Score')+theme(legend.position='top',text=element_text(size=15))+
+guides(color = guide_legend(title=NULL,override.aes=list(alpha=1),keywidth=3),linetype=guide_legend(title=NULL,keywidth=1)))#override.aes=list(size=2)))
+dev.off()
+setwd('figure'); tools::texi2dvi('etaModel.tex', pdf = T, clean = T); setwd('..')
+
+##########################
+### posterior predictive dimensionality
+###########################
+load('output/PPPdim.RData')
+pdf('figure/dimensionalityHist.pdf')
+hist(PPP[upper.tri(PPP)],main='Posterior Predictve P-values')
+dev.off()
+
+### MDS
+## distance from p-values: 1-p
+d <- 1-PPP
+diag(d) <- 0
+fit <- cmdscale(d,eig=TRUE, k=2) # k is the number of dim
+fit # view results
+
+# plot solution
+x <- fit$points[,1]
+y <- fit$points[,2]
+#pdf('figure/pppMDS.pdf')
+qplot(x, y, xlab="MDS Coordinate 1", ylab="MDS Coordinate 2",
+     main="")#,pch=16)#,type='n')
+#text(x,y,
+                                        #dev.off()
+ggsave('figure/pppMDS.pdf',width=4,height=4)
+
+
+##### posterior predictive checks: figures
+library(bayesplot)
+### make Yrep
+set.seed(613)
+samp <- sample(1:nrow(draws$studEff),size=1000)
+draws1k <- lapply(draws, function(x) if(NCOL(x)==1) x[samp] else x[samp,])
+Ymean <- with(c(sdat,draws1k),
+              teacherEffY[,teacher]+schoolEffY[,school]+pairEffect[,pair]+sweep(studEff,1,a1,'*')+
+              sweep(sweep(studEff,1,b1,'*'),2,Z,'*')+betaY%*%t(X))
+
+Yrep <- sapply(1:1000,function(i) rnorm(sdat$nstud,Ymean[i,],draws1k$sigY[i,sdat$Z+1]))
+
+## overall Y
+ppc_dens_overlay(sdat$Y,t(Yrep))+ggtitle('Pooled Treatment and Control')
+ggsave('figure/ppcYoverall.jpg')
+
+ppc_dens_overlay(sdat$Y[sdat$Z==1],t(Yrep)[,sdat$Z==1])+ggtitle('Treatment Group')
+ggsave('figure/ppcYtrt.jpg')
+
+ppc_dens_overlay(sdat$Y[sdat$Z==0],t(Yrep)[,sdat$Z==0])+ggtitle('Control Group')
+ggsave('figure/ppcYctl.jpg')
+
+### residual plots
+fitd <- rowMeans(Yrep)
+qplot(fitd,sdat$Y-fitd,xlab='Fitted Values',ylab='Residuals',main='Overall')
+ggsave('figure/residPlotOverall.jpg')
+
+qplot(fitd[sdat$Z==1],sdat$Y[sdat$Z==1]-fitd[sdat$Z==1],xlab='Fitted Values',ylab='Residuals',main='Treatment Group')
+ggsave('figure/residPlotTrt.jpg')
+
+qplot(fitd[sdat$Z==0],sdat$Y[sdat$Z==0]-fitd[sdat$Z==0],xlab='Fitted Values',ylab='Residuals',main='Control Group')
+ggsave('figure/residPlotCtl.jpg')
+
+
+pdf('figure/qqPlots.pdf', height=3,width=6)
+par(mfrow=c(1,2))
+qqnorm(sdat$Y[sdat$Z==1]-fitd[sdat$Z==1],main='Treatment Group')
+qqline(sdat$Y[sdat$Z==1]-fitd[sdat$Z==1])
+qqnorm(sdat$Y[sdat$Z==0]-fitd[sdat$Z==0],main='Control Group')
+qqline(sdat$Y[sdat$Z==0]-fitd[sdat$Z==0])
+dev.off()
+
+
+### usage model
+set.seed(613)
+samp <- sample(1:1000,9)
+lp <- with(c(sdat,draws1k),studEff[samp,studentM]+secEff[samp,section])
+prob <- exp(lp)/(1+exp(lp))
+p <- ppc_error_binned(sdat$grad,prob)
+ggplot2::ggsave('figure/binnedplot.pdf',p)
+
+
+#####################
+### plot results from robustness models
+#####################
+mainb1 <- summary(main,par='b1')[[1]]['b1',]
+robustness <- data.frame(Value=mainb1['mean'],Coefficient='Main Model',HighInner=mainb1['75%'],LowInner=mainb1['25%'],
+                                      HighOuter=mainb1['97.5%'],LowOuter=mainb1['2.5%'],Model='model')
+ests <- c(mainb1['mean'],mainb1['sd'])
+modFiles <- c('xInteractions','modNoTeacher','pooledU','stanMod2pl','stanMod3pl','bcModel','hardSections','fullMod','rawMod','rawModBC2')
+
+for(mmm in modFiles){
+    modName <- load(paste0('output/',mmm,'.RData'))
+    modName <- modName[1]
+    modSumm <- summary(get(modName),par='b1')[[1]]['b1',]
+    ests <- rbind(ests,c(modSumm['mean'],modSumm['sd']))
+    robustness <- rbind(robustness,
+                        data.frame(Value=modSumm['mean'],Coefficient=modName,HighInner=modSumm['75%'],
+                                   LowInner=modSumm['25%'],HighOuter=modSumm['97.5%'],LowOuter=modSumm['2.5%'],
+                                   Model='model'))
+    rm(list=modName); gc()
+}
+
+#robustness <- subset(robustness,Coefficient!='rawMod')
+
+modelNames <- c('Main Model','Covariate Interations','No Teacher Effects','Pooled Rasch Model','2PL Mastery', '3PL Mastery','Power Transform Y','Exclude Sections w/o Hints','Include All Data','Raw Scores',
+                'Raw Scores (BC Trans)')
+robustness$Coefficient <- factor(modelNames,levels=rev(modelNames))
+
+coefplot.data.frame(subset(robustness,modelNames!='Raw Scores'),xlab=expression(hat(b)[1]),ylab=NULL,lwdOuter=0.5,lwdInner=1.5)+theme(text=element_text(size=15))
+
+rob2 <- subset(robustness,modelNames!='Raw Scores')
+rob2$estX <- min(rob2$LowOuter)-0.05
+rob2$seX <- min(rob2$LowOuter)-0.02
+rob2$est <- paste0('  ',round(ests[-which(robustness$Coefficient=='Raw Scores'),'mean'],3),' (',round(ests[-which(robustness$Coefficient=='Raw Scores'),'sd'],3),')')
+#rob2$se <- paste0(
+
+ggplot(rob2,aes(x=Value,y=Coefficient))+geom_point(size=2)+
+    geom_errorbarh(aes(xmin=LowInner,xmax=HighInner),size=1.5,height=0)+
+    geom_errorbarh(aes(xmin=LowOuter,xmax=HighOuter),size=0.5,height=0)+
+    geom_text(aes(x=estX,label=est),hjust='left')+
+                                        #geom_text(aes(x=seX,label=se))+
+    theme_minimal()+
+    ylab('')+xlab(expression(b[1]))+scale_x_continuous(breaks=c(-0.1,-0.05,0,0.05))+geom_vline(xintercept=0,linetype='dotted')+theme(text=element_text(size=15))
+
+ggsave('figure/robustness.pdf',height=8,width=6)

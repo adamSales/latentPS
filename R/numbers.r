@@ -135,6 +135,10 @@ results$b195H <- round(quantile(b1Std,0.975)*100)
 source('R/ppcDim.r')
 results$dimPval <- round(median(PPP[upper.tri(PPP)]),2)
 
+### for supplementary file:
+results$propExtremePPP <- round(mean(PPP[upper.tri(PPP)]<0.025 | PPP[upper.tri(PPP)]>0.975),2)
+results$propSmallPPP05 <- round(mean(PPP[upper.tri(PPP)]<0.05),2)
+
 ## hard sections?
 load('output/hardSections.RData')
 hardB1 <- rstan::summary(hard,par='b1',prob=c())

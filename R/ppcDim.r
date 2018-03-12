@@ -1,12 +1,12 @@
-### test dimensionality by running DETECT test
-print(load('output/stanMod.RData'))
+#### PPMC
+### use Q3 (levy et al 2009)
+
+print(load('output/mainModel.RData'))
 studEff <- rstan::extract(main,'studEff')[[1]]
 secEff <- rstan::extract(main,'secEff')[[1]]
 
 
 
-#### PPMC
-### use Q3 (levy et al 2009)
 
 stud2 <- sort(unique(sdat$studentM))[table(sdat$studentM)>1]
 studM2 <- sdat$studentM[sdat$studentM%in%stud2]
