@@ -95,7 +95,7 @@ results$mbarB1int <- paste0('[',paste(round(sumMbar['b1',c('2.5%','97.5%')],1),c
 results$perMastHalf <- round(mean(sdatObs$MbarTO>.5)*100)
 
 ### comparing mbar to eta
-load('output/mainModel.RData')
+print(load('output/mainMod.RData'))
 draws <- extract(main)
 secDiff <- colMeans(-draws$secEff)
 sss <- secDiff[sdat$sec]
@@ -130,6 +130,27 @@ results$b1Mean <- round(mean(b1Std)*100)
 results$b1sd <- round(sd(b1Std)*100)
 results$b195L <- round(quantile(b1Std,0.025)*100)
 results$b195H <- round(quantile(b1Std,0.975)*100)
+
+### with 3pl model
+load('output/stanMod3pl.RData')
+draws3pl <- extract(stanMod3pl)
+
+trtEff3 <- sweep(sweep(draws3pl$studEff,1,draws3pl$b1,'*'),1,draws3pl$b0,'+')
+ate3 <- mean(trtEff3)
+
+perChange3 <- sapply(1:nrow(draws3pl$studEff),
+                   function(i) (draws3pl$b1[i]*quantile(draws3pl$studEff[i,],0.75)+draws3pl$b0[i])/
+                               (draws3pl$b1[i]*quantile(draws3pl$studEff[i,],0.25)+draws3pl$b0[i]))
+pc3 <- perChange3-1
+
+iqrEta3 <- apply(draws3pl$studEff,1,IQR)
+b1Std3 <- draws3pl$b1*iqrEta3/ate3
+
+results$b1Mean3 <- round(mean(b1Std3)*100)
+results$b1sd3 <- round(sd(b1Std3)*100)
+results$b195L3 <- round(quantile(b1Std3,0.025)*100)
+results$b195H3 <- round(quantile(b1Std3,0.975)*100)
+
 
 ## latent dimensionality?
 source('R/ppcDim.r')

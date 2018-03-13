@@ -473,11 +473,16 @@ dev.off()
 ### usage model
 set.seed(613)
 samp <- sample(1:1000,9)
-lp <- with(c(sdat,draws1k),studEff[samp,studentM]+secEff[samp,section])
+lp <- with(c(sdat,draws1k),studEff[,studentM]+secEff[,section])
 prob <- exp(lp)/(1+exp(lp))
-p <- ppc_error_binned(sdat$grad,prob)
+p <- ppc_error_binned(sdat$grad,prob[samp,])
 ggplot2::ggsave('figure/binnedplot.pdf',p)
 
+### ppc m-bar
+mbarRep <- apply(prob,1,function(p) aggregate(rbinom(length(sdat$grad),1,p),by=list(sdat$studentM),FUN=mean)$x)
+mbar <- aggregate(sdat$grad,by=list(sdat$studentM),FUN=mean)$x
+ppc_dens_overlay(mbar,t(mbarRep))
+ggsave('figure/mbarPPC.jpg')
 
 #####################
 ### plot results from robustness models
