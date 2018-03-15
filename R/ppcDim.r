@@ -1,9 +1,9 @@
 #### PPMC
 ### use Q3 (levy et al 2009)
 
-print(load('output/mainModel.RData'))
-studEff <- rstan::extract(main,'studEff')[[1]]
-secEff <- rstan::extract(main,'secEff')[[1]]
+#print(load('output/mainModel.RData'))
+studEff <- draws$studEff #rstan::extract(main,'studEff')[[1]]
+secEff <- draws$secEff # rstan::extract(main,'secEff')[[1]]
 
 
 

@@ -97,6 +97,8 @@ results$perMastHalf <- round(mean(sdatObs$MbarTO>.5)*100)
 ### comparing mbar to eta
 print(load('output/mainMod.RData'))
 draws <- extract(main)
+summMain <- summary(main)
+#rm(main); gc()
 secDiff <- colMeans(-draws$secEff)
 sss <- secDiff[sdat$sec]
 mDiff <- aggregate(sss,list(stud=sdat$studentM),mean)
@@ -114,42 +116,35 @@ results$perVarExp <- round(cor(fittedEta[sdat$Z==1],Eeta[sdat$Z==1])^2*100)
 ## main results
 results$perRunNeg <- round(mean(draws$b1<0)*100)
 
-## compared to ATE
-trtEff <- sweep(sweep(draws$studEff,1,draws$b1,'*'),1,draws$b0,'+')
-ate <- mean(trtEff)
-
-perChange <- sapply(1:nrow(draws$studEff),
-                   function(i) (draws$b1[i]*quantile(draws$studEff[i,],0.75)+draws$b0[i])/
-                               (draws$b1[i]*quantile(draws$studEff[i,],0.25)+draws$b0[i]))
-pc <- perChange-1
+pooledSD <- with(sdat, sqrt(((sum(Z)-1)*var(Y[Z==1])+(sum(1-Z)-1)*var(Y[Z==0]))/(nstud-2)))
 
 iqrEta <- apply(draws$studEff,1,IQR)
-b1Std <- draws$b1*iqrEta/ate
+b1Std <- draws$b1*iqrEta/pooledSD
 
-results$b1Mean <- round(mean(b1Std)*100)
-results$b1sd <- round(sd(b1Std)*100)
-results$b195L <- round(quantile(b1Std,0.025)*100)
-results$b195H <- round(quantile(b1Std,0.975)*100)
+results$b1stand <- sprintf('%.3f',mean(b1Std))
+results$b1se <- sprintf('%.3f',sd(b1Std))
+results$b1ciL <- sprintf('%.3f',quantile(b1Std,.025))
+results$b1ciH <- sprintf('%.3f',quantile(b1Std,.975))
 
-### with 3pl model
-load('output/stanMod3pl.RData')
-draws3pl <- extract(stanMod3pl)
+## compared to ATE
+trtEff <- sweep(sweep(draws$studEff,1,draws$b1,'*'),1,draws$b0,'+')
+results$ate <- sprintf('%.3f',mean(trtEff)/pooledSD)
 
-trtEff3 <- sweep(sweep(draws3pl$studEff,1,draws3pl$b1,'*'),1,draws3pl$b0,'+')
-ate3 <- mean(trtEff3)
+rm(trtEff);gc()
 
-perChange3 <- sapply(1:nrow(draws3pl$studEff),
-                   function(i) (draws3pl$b1[i]*quantile(draws3pl$studEff[i,],0.75)+draws3pl$b0[i])/
-                               (draws3pl$b1[i]*quantile(draws3pl$studEff[i,],0.25)+draws3pl$b0[i]))
-pc3 <- perChange3-1
+## perChange <- sapply(1:nrow(draws$studEff),
+##                    function(i) (draws$b1[i]*quantile(draws$studEff[i,],0.75)+draws$b0[i])/
+##                                (draws$b1[i]*quantile(draws$studEff[i,],0.25)+draws$b0[i]))
+## pc <- perChange-1
 
-iqrEta3 <- apply(draws3pl$studEff,1,IQR)
-b1Std3 <- draws3pl$b1*iqrEta3/ate3
+## iqrEta <- apply(draws$studEff,1,IQR)
+## b1Std <- draws$b1*iqrEta/ate
 
-results$b1Mean3 <- round(mean(b1Std3)*100)
-results$b1sd3 <- round(sd(b1Std3)*100)
-results$b195L3 <- round(quantile(b1Std3,0.025)*100)
-results$b195H3 <- round(quantile(b1Std3,0.975)*100)
+## results$b1Mean <- round(mean(b1Std)*100)
+## results$b1sd <- round(sd(b1Std)*100)
+## results$b195L <- round(quantile(b1Std,0.025)*100)
+## results$b195H <- round(quantile(b1Std,0.975)*100)
+
 
 
 ## latent dimensionality?
@@ -160,11 +155,31 @@ results$dimPval <- round(median(PPP[upper.tri(PPP)]),2)
 results$propExtremePPP <- round(mean(PPP[upper.tri(PPP)]<0.025 | PPP[upper.tri(PPP)]>0.975),2)
 results$propSmallPPP05 <- round(mean(PPP[upper.tri(PPP)]<0.05),2)
 
+### remove main model
+rm(main);gc()
+
 ## hard sections?
 load('output/hardSections.RData')
-hardB1 <- rstan::summary(hard,par='b1',prob=c())
-results$hardSecB1Mean <- round(hardB1[[1]][1,'mean'],2)
-results$hardSecB1SD <- round(hardB1[[1]][1,'sd'],2)
+drawsHard <- extract(hard)
+iqrEtaHard <- apply(drawsHard$studEff,1,IQR)
+b1Hard <- drawsHard$b1*iqrEtaHard/pooledSD
+results$hardSecB1Mean <- sprintf('%.3f',mean(b1Hard))
+results$hardSecB1SD <- sprintf('%.3f',sd(b1Hard))
+rm(hard); gc()
+
+### with 3pl model
+load('output/stanMod3pl.RData')
+draws3pl <- extract(stanMod3pl)
+
+iqrEta3 <- apply(draws3pl$studEff,1,IQR)
+b1Std3 <- draws3pl$b1*iqrEta3/pooledSD
+
+results$b1stand3 <- sprintf('%.3f',mean(b1Std3))
+results$b1se3 <- sprintf('%.3f',sd(b1Std3))
+results$b1ciL3 <- sprintf('%.3f',quantile(b1Std3,.025))
+results$b1ciH3 <- sprintf('%.3f',quantile(b1Std3,.975))
+
+rm(stanMod3pl); gc()
 
 ### save it all
 attach(results)

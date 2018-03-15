@@ -11,12 +11,13 @@ load('data/HSdata.RData')
 load('data/advanceData.RData')
 
 source('R/prelimStan.r')
+pooledSD <- with(sdat, sqrt(((sum(Z)-1)*var(Y[Z==1])+(sum(1-Z)-1)*var(Y[Z==0]))/(nstud-2)))
 source('R/prelimMbar.r')
 
 ##################
 ### load main model results
 ################
-load('output/mainModel.RData')
+load('output/mainMod.RData')
 load('output/mbarModel.RData')
 
 ###############3
@@ -39,7 +40,7 @@ etasd <- apply(U,2,sd)
 sdEta <- sqrt(mean(apply(draws$studEff,1,var)))
 Eeta <- colMeans(draws$studEff)
 
-draws$studEff <- Usamp
+#draws$studEff <- Usamp
 
 summMain <- summary(main)[[1]]
 
@@ -65,13 +66,16 @@ plotDatObs$treat2 <- plotDatObs$treat
 
 tikz(file = "figure/mbarModel.tex",
   standAlone = T,
-  width  = 6, height  = 3)
-print(ggplot(plotDatObs,aes(mbar,Y,fill=treat,group=treat,alpha=treat,color=treat))+geom_point(size=2)+
-    geom_abline(aes(intercept=int,slope=slope,linetype=treat2),color='black',size=2,alpha=1)+scale_alpha_discrete(range=c(0.4,.8))+
+  width  = 6, height  = 6)
+print(ggplot(plotDatObs,aes(mbar,Y,fill=treat,group=treat,#alpha=treat,
+                            color=treat))+geom_point(size=1)+
+      geom_abline(aes(intercept=int,slope=slope,color=treat),#linetype=treat2),color='black',
+                  size=5,alpha=1)+#scale_alpha_discrete(range=c(0.4,.8))+
+      geom_abline(aes(intercept=int,slope=slope),size=2.5,alpha=1)+
     scale_colour_manual(values=c('red','blue'))+
     labs(group=NULL,fill=NULL,alpha=NULL)+xlab('$\\bar{m}_T$')+
     ylab('Posttest Score')+theme(legend.position='top',text=element_text(size=15))+
-    guides(color = guide_legend(title=NULL,override.aes=list(alpha=1),keywidth=3),linetype=guide_legend(title=NULL,keywidth=1)))#override.aes=list(size=2)))
+    guides(color = guide_legend(title=NULL,override.aes=list(alpha=1,size=3),keywidth=3),linetype=guide_legend(title=NULL,keywidth=1,override.aes=list(size=1))))#override.aes=list(size=2)))
 dev.off()
 setwd('figure'); tools::texi2dvi('mbarModel.tex', pdf = T, clean = T); setwd('..')
 
@@ -173,12 +177,12 @@ library(coefplot)
 
 ## coefs <- summary(main,'betaU')[[1]]
 coefs <- summMain[grep('betaU',rownames(summMain)),]
-rownames(coefs) <- colnames(sdat$X)
+rownames(coefs) <- colnames(sdatLat$X)
 
 ## sqrt of average (over the draws) of the variance of eta
 ## sdEta <- sqrt(mean(apply(draws$studEff,1,var)))
 
-coefs <- coefs/apply(sdat$X,2,sd)/sdEta
+coefs <- coefs/apply(sdatLat$X,2,sd)/sdEta
 
 coefName <- c('Black/\n Multiracial','Hispanic/\n Native American','Male','Special Ed.','Gifted')
 coefName <- factor(coefName,levels=coefName)
@@ -214,7 +218,7 @@ dev.off()
 ##############################
 #### Potential Outcomes Plot
 ###########################
-a0 <- rnorm(length(draws$a1),mean(sdat$Y[sdat$Z==0]),sd(sdat$Y[sdat$Z==0])/sqrt(sum(sdat$Z==0)))
+a0 <- rnorm(length(draws$a1),mean(sdatLat$Y[sdatLat$Z==0]),sd(sdatLat$Y[sdatLat$Z==0])/sqrt(sum(sdatLat$Z==0)))
 a1 <- draws$a1
 b0 <- draws$b0
 b1 <- draws$b1
@@ -246,14 +250,17 @@ dev.off()
 ############################
 ######## main effect plot
 #########################
-samp <- seq(1,9000,length=1000)
+
 
 pdMod <- function(mod,row=1,column=1,func){
     draws <- extract(mod)
+    samp <- seq(1,length(draws$b1),length=1000)
     Usamp <- draws$studEff[samp,]
     studEff95 <- quantile(Usamp,c(0.025,0.975))
     Usamp[Usamp<studEff95[1] | Usamp>studEff95[2]] <- NA
     trtEff <- sweep(sweep(Usamp,1,draws$b1[samp],'*'),1,draws$b0[samp],'+')
+
+    iqr <- apply(Usamp,1,IQR)
 
     if(missing(func)){
         func <- function(x) mean(draws$b0)+mean(draws$b1)*x
@@ -272,12 +279,22 @@ pdMod <- function(mod,row=1,column=1,func){
 #    if(knownTruth) title <- paste('True Effe
 
     pd <- data.frame(b0=draws$b0[samp],b1=draws$b1[samp],id=1:length(samp),row=row,column=column,xmin=studEff95[1],xmax=studEff95[2],ymin=min(trtEff,na.rm=T),ymax=max(trtEff,na.rm=T),x=x,y=y,
-                     truthOrAvg=truthOrAvg)
+                     truthOrAvg=truthOrAvg,
+                     iqr=iqr)
     pd
 }
 
 pdMain <- pdMod(main)
-
+pdMain <- within(pdMain,
+{
+    b0 <- b0/pooledSD
+    b1 <- b1/pooledSD*iqr
+    xmin <- xmin*mean(iqr)
+    xmax <- xmax*mean(iqr)
+    ymin <- ymin/pooledSD
+    ymax <- ymax/pooledSD
+}
+)
 tikz('figure/mainEffects.tex', standAlone=T,
      width=6,height=5)
 print(ggplot(pdMain)+
@@ -379,21 +396,29 @@ setwd('figure'); tools::texi2dvi('fakePlots.tex', pdf = T, clean = T); setwd('..
 ### eta_T vs Y
 #########################################
 
+draw <- which.min(abs(draws$b1-mean(draws$b1)))
+plotDat <- with(sdatLat,data.frame(Y=scale(Y,center=mean(Y[Z==0]),scale=pooledSD),
+                                   eta=scale(studEff[draw,],scale=IQR(studEff[draw,])),
+                                   Z=Z))
 
-plotDat <- with(sdat,data.frame(Y=Y,eta=draws$studEff[draw,],Z=Z))
 plotDat$treat <- ifelse(plotDat$Z==1,'Treatment','Control')
-plotDat$slope <- ifelse(plotDat$treat=='Control',draws$a1[draw],draws$a1[draw]+draws$b1[draw])
-plotDat$int <- ifelse(plotDat$treat=='Control',0,draws$b0[draw])
+plotDat$slope <- (draws$a1[draw]+ifelse(plotDat$treat=='Control',0,draws$b1[draw]))*IQR(studEff[draw,])/pooledSD
+plotDat$int <- ifelse(plotDat$treat=='Control',0,draws$b0[draw]/pooledSD)
 
-plotDat <- within(plotDat, int <- int-( mean(int+slope*eta)-mean(plotDat$Y)))
+#plotDat <- within(plotDat, int <- int-( mean(int+slope*eta)-mean(plotDat$Y)))
 #plotDat <- plotDat[order(plotDat$treat),]
 plotDat$treat2 <- plotDat$treat
 
 tikz(file = "figure/etaModel.tex",
   standAlone = T,
-  width  = 6, height  = 3)
-print(ggplot(plotDat,aes(eta,Y,fill=treat,group=treat,color=treat))+geom_point(size=2,alpha=0.4)+geom_smooth(aes(linetype=treat2),color='black',se=FALSE,size=2,alpha=1,method='lm')+coord_cartesian(xlim=quantile(plotDat$eta,c(0.005,0.995)),ylim=quantile(plotDat$Y,c(0.005,0.995)))+
-#    geom_abline(aes(intercept=int,slope=slope,linetype=treat2),color='black',size=2,alpha=1)+scale_alpha_discrete(range=c(0.4,.8))+
+  width  = 6, height  = 6)
+print(ggplot(plotDat,aes(eta,Y,fill=treat,group=treat,color=treat))+geom_point(size=.5)+
+      ##geom_smooth(aes(linetype=treat2),color='black',se=FALSE,size=2,alpha=1,method='lm')+
+      #geom_smooth(aes(color=treat),se=FALSE,size=5,method='lm')+
+      #geom_smooth(color='black',se=FALSE,size=2.5,method='lm')+
+      coord_cartesian(xlim=quantile(plotDat$eta,c(0.005,0.995)),ylim=quantile(plotDat$Y,c(0.005,0.995)))+
+      geom_abline(aes(intercept=int,slope=slope,color=treat),size=4,alpha=1)+#+scale_alpha_discrete(range=c(0.4,.8))+
+      geom_abline(aes(intercept=int,slope=slope),color='black',size=2,alpha=1)+#+scale_alpha_discrete(range=c(0.4,.8))+
     scale_colour_manual(values=c('red','blue'))+
     labs(group=NULL,fill=NULL,alpha=NULL)+xlab('$\\eta_T$')+
     ylab('Posttest Score')+theme(legend.position='top',text=element_text(size=15))+
@@ -433,54 +458,54 @@ library(bayesplot)
 set.seed(613)
 samp <- sample(1:nrow(draws$studEff),size=1000)
 draws1k <- lapply(draws, function(x) if(NCOL(x)==1) x[samp] else x[samp,])
-Ymean <- with(c(sdat,draws1k),
+Ymean <- with(c(sdatLat,draws1k),
               teacherEffY[,teacher]+schoolEffY[,school]+pairEffect[,pair]+sweep(studEff,1,a1,'*')+
               sweep(sweep(studEff,1,b1,'*'),2,Z,'*')+betaY%*%t(X))
 
-Yrep <- sapply(1:1000,function(i) rnorm(sdat$nstud,Ymean[i,],draws1k$sigY[i,sdat$Z+1]))
+Yrep <- sapply(1:1000,function(i) rnorm(sdatLat$nstud,Ymean[i,],draws1k$sigY[i,sdatLat$Z+1]))
 
 ## overall Y
-ppc_dens_overlay(sdat$Y,t(Yrep))+ggtitle('Pooled Treatment and Control')
+ppc_dens_overlay(sdatLat$Y,t(Yrep))+ggtitle('Pooled Treatment and Control')
 ggsave('figure/ppcYoverall.jpg')
 
-ppc_dens_overlay(sdat$Y[sdat$Z==1],t(Yrep)[,sdat$Z==1])+ggtitle('Treatment Group')
+ppc_dens_overlay(sdatLat$Y[sdatLat$Z==1],t(Yrep)[,sdatLat$Z==1])+ggtitle('Treatment Group')
 ggsave('figure/ppcYtrt.jpg')
 
-ppc_dens_overlay(sdat$Y[sdat$Z==0],t(Yrep)[,sdat$Z==0])+ggtitle('Control Group')
+ppc_dens_overlay(sdatLat$Y[sdatLat$Z==0],t(Yrep)[,sdatLat$Z==0])+ggtitle('Control Group')
 ggsave('figure/ppcYctl.jpg')
 
 ### residual plots
 fitd <- rowMeans(Yrep)
-qplot(fitd,sdat$Y-fitd,xlab='Fitted Values',ylab='Residuals',main='Overall')
+qplot(fitd,sdatLat$Y-fitd,xlab='Fitted Values',ylab='Residuals',main='Overall')
 ggsave('figure/residPlotOverall.jpg')
 
-qplot(fitd[sdat$Z==1],sdat$Y[sdat$Z==1]-fitd[sdat$Z==1],xlab='Fitted Values',ylab='Residuals',main='Treatment Group')
+qplot(fitd[sdatLat$Z==1],sdatLat$Y[sdatLat$Z==1]-fitd[sdatLat$Z==1],xlab='Fitted Values',ylab='Residuals',main='Treatment Group')
 ggsave('figure/residPlotTrt.jpg')
 
-qplot(fitd[sdat$Z==0],sdat$Y[sdat$Z==0]-fitd[sdat$Z==0],xlab='Fitted Values',ylab='Residuals',main='Control Group')
+qplot(fitd[sdatLat$Z==0],sdatLat$Y[sdatLat$Z==0]-fitd[sdatLat$Z==0],xlab='Fitted Values',ylab='Residuals',main='Control Group')
 ggsave('figure/residPlotCtl.jpg')
 
 
 pdf('figure/qqPlots.pdf', height=3,width=6)
 par(mfrow=c(1,2))
-qqnorm(sdat$Y[sdat$Z==1]-fitd[sdat$Z==1],main='Treatment Group')
-qqline(sdat$Y[sdat$Z==1]-fitd[sdat$Z==1])
-qqnorm(sdat$Y[sdat$Z==0]-fitd[sdat$Z==0],main='Control Group')
-qqline(sdat$Y[sdat$Z==0]-fitd[sdat$Z==0])
+qqnorm(sdatLat$Y[sdatLat$Z==1]-fitd[sdatLat$Z==1],main='Treatment Group')
+qqline(sdatLat$Y[sdatLat$Z==1]-fitd[sdatLat$Z==1])
+qqnorm(sdatLat$Y[sdatLat$Z==0]-fitd[sdatLat$Z==0],main='Control Group')
+qqline(sdatLat$Y[sdatLat$Z==0]-fitd[sdatLat$Z==0])
 dev.off()
 
 
 ### usage model
 set.seed(613)
 samp <- sample(1:1000,9)
-lp <- with(c(sdat,draws1k),studEff[,studentM]+secEff[,section])
+lp <- with(c(sdatLat,draws1k),studEff[,studentM]+secEff[,section])
 prob <- exp(lp)/(1+exp(lp))
-p <- ppc_error_binned(sdat$grad,prob[samp,])
+p <- ppc_error_binned(sdatLat$grad,prob[samp,])
 ggplot2::ggsave('figure/binnedplot.pdf',p)
 
 ### ppc m-bar
-mbarRep <- apply(prob,1,function(p) aggregate(rbinom(length(sdat$grad),1,p),by=list(sdat$studentM),FUN=mean)$x)
-mbar <- aggregate(sdat$grad,by=list(sdat$studentM),FUN=mean)$x
+mbarRep <- apply(prob,1,function(p) aggregate(rbinom(length(sdatLat$grad),1,p),by=list(sdatLat$studentM),FUN=mean)$x)
+mbar <- aggregate(sdatLat$grad,by=list(sdatLat$studentM),FUN=mean)$x
 ppc_dens_overlay(mbar,t(mbarRep))
 ggsave('figure/mbarPPC.jpg')
 

@@ -5,7 +5,7 @@ source('R/prelimStan.r')
 ##############################################
 
 ### use data, E[studEff] from main model
-load('output/mainModel.RData')
+load('output/mainMod.RData')
 dat$U <- colMeans(extract(main,'studEff')[[1]])
 ### U has a couple outliers:
 dat$U[dat$U< -4] <- -4
