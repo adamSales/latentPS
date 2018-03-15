@@ -396,11 +396,11 @@ setwd('figure'); tools::texi2dvi('fakePlots.tex', pdf = T, clean = T); setwd('..
 
 draw <- which.min(abs(draws$b1-mean(draws$b1)))
 plotDat <- with(sdatLat,data.frame(Y=scale(Y,center=mean(Y[Z==0]),scale=pooledSD),
-                                   eta=scale(studEff[draw,],scale=IQR(draws$studEff[draw,])),
+                                   eta=scale(draws$studEff[draw,],scale=IQR(draws$studEff[draw,])),
                                    Z=Z))
 
 plotDat$treat <- ifelse(plotDat$Z==1,'Treatment','Control')
-plotDat$slope <- (draws$a1[draw]+ifelse(plotDat$treat=='Control',0,draws$b1[draw]))*IQR(studEff[draw,])/pooledSD
+plotDat$slope <- (draws$a1[draw]+ifelse(plotDat$treat=='Control',0,draws$b1[draw]))*IQR(draws$studEff[draw,])/pooledSD
 plotDat$int <- ifelse(plotDat$treat=='Control',0,draws$b0[draw]/pooledSD)
 
 #plotDat <- within(plotDat, int <- int-( mean(int+slope*eta)-mean(plotDat$Y)))
