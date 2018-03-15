@@ -52,26 +52,23 @@ save(draws,draw,eta,etasd,sdEta,Eeta,summMain,Usamp,file='output/smallMain.RData
 ########################
 ###  Mbar model figure
 ########################
-draw <- 1000
 samps <- extract(mbarMod)
-
-plotDatObs <- with(sdatObs,data.frame(Y=c(YtO,YtM,Yc),mbar=c(MbarTO,samps$MbarTM[draw,],samps$MbarC[draw,]),Z=c(rep(1,nstudTO),rep(1,nstudTM),rep(0,nstudC))))
+drawMb <- which.min(abs(samps$b1-mean(samps$b1)))
+plotDatObs <- with(sdatObs,data.frame(Y=c(YtO,YtM,Yc)/pooledSD,mbar=c(MbarTO,samps$MbarTM[drawMb,],samps$MbarC[drawMb,]),Z=c(rep(1,nstudTO),rep(1,nstudTM),rep(0,nstudC))))
 plotDatObs$treat <- ifelse(plotDatObs$Z==1,'Treatment','Control')
-plotDatObs$slope <- ifelse(plotDatObs$treat=='Control',samps$a1[draw],samps$a1[draw]+samps$b1[draw])
-plotDatObs$int <- ifelse(plotDatObs$treat=='Control',0,samps$b0[draw])
+plotDatObs$slope <- (samps$a1[drawMb]+ifelse(plotDatObs$treat=='Control',0,samps$b1[drawMb]))/pooledSD
+plotDatObs <- within(plotDatObs,int <- mean(Y[treat=='Control'])-mean(slope[treat=='Control'])*mean(mbar[treat=='Control'])+ifelse(treat=='Control',0,samps$b0[drawMb]))
 
-plotDatObs <- within(plotDatObs, int <- int-( mean(int+slope*mbar)-mean(plotDatObs$Y)))
+#plotDatObs <- within(plotDatObs, int <- int-( mean(int+slope*mbar)-mean(Y)))
 plotDatObs <- plotDatObs[order(plotDatObs$treat),]
 plotDatObs$treat2 <- plotDatObs$treat
 
 tikz(file = "figure/mbarModel.tex",
   standAlone = T,
   width  = 6, height  = 6)
-print(ggplot(plotDatObs,aes(mbar,Y,fill=treat,group=treat,#alpha=treat,
-                            color=treat))+geom_point(size=1)+
-      geom_abline(aes(intercept=int,slope=slope,color=treat),#linetype=treat2),color='black',
-                  size=5,alpha=1)+#scale_alpha_discrete(range=c(0.4,.8))+
-      geom_abline(aes(intercept=int,slope=slope),size=2.5,alpha=1)+
+print(ggplot(plotDatObs,aes(mbar,Y,fill=treat,group=treat,color=treat))+geom_point(size=1)+
+      geom_abline(aes(intercept=int,slope=slope,color=treat),size=4)+
+      geom_abline(aes(intercept=int,slope=slope),size=2)+
     scale_colour_manual(values=c('red','blue'))+
     labs(group=NULL,fill=NULL,alpha=NULL)+xlab('$\\bar{m}_T$')+
     ylab('Posttest Score')+theme(legend.position='top',text=element_text(size=15))+
@@ -211,7 +208,7 @@ for(ss in samp){
     lines(sort(dat$xirt),xpredS[order(dat$xirt)],col=adjustcolor('pink',0.5))
 }
 lines(sort(dat$xirt),xpred[order(dat$xirt)],lwd=2)
-legend('bottomright',legend=c('Treated','Control (Imputed)','Model (Avg.)','Model (draws)'),col=c('blue','red','black','pink'),pch=c('o','o','.','.'),lwd=c(0.01,0.01,2,2))
+legend('bottomright',legend=c('Treated','Control (Imputed)','Model (Avg.)','Model (draws)'),col=c('blue','red','black','pink'),pch=c('o','o','.','.'),lwd=c(0.00,0.00,2,2))
 dev.off()
 
 
@@ -256,11 +253,12 @@ pdMod <- function(mod,row=1,column=1,func){
     draws <- extract(mod)
     samp <- seq(1,length(draws$b1),length=1000)
     Usamp <- draws$studEff[samp,]
+    iqr <- apply(Usamp,1,IQR)
     studEff95 <- quantile(Usamp,c(0.025,0.975))
     Usamp[Usamp<studEff95[1] | Usamp>studEff95[2]] <- NA
     trtEff <- sweep(sweep(Usamp,1,draws$b1[samp],'*'),1,draws$b0[samp],'+')
 
-    iqr <- apply(Usamp,1,IQR)
+
 
     if(missing(func)){
         func <- function(x) mean(draws$b0)+mean(draws$b1)*x
@@ -285,16 +283,16 @@ pdMod <- function(mod,row=1,column=1,func){
 }
 
 pdMain <- pdMod(main)
-pdMain <- within(pdMain,
-{
-    b0 <- b0/pooledSD
-    b1 <- b1/pooledSD*iqr
-    xmin <- xmin*mean(iqr)
-    xmax <- xmax*mean(iqr)
-    ymin <- ymin/pooledSD
-    ymax <- ymax/pooledSD
-}
-)
+## pdMain <- within(pdMain,
+## {
+##     b0 <- b0/pooledSD
+##     b1 <- b1/pooledSD*iqr
+##     xmin <- xmin/mean(iqr)
+##     xmax <- xmax/mean(iqr)
+##     ymin <- ymin/pooledSD
+##     ymax <- ymax/pooledSD
+## }
+## )
 tikz('figure/mainEffects.tex', standAlone=T,
      width=6,height=5)
 print(ggplot(pdMain)+
@@ -368,7 +366,7 @@ pd <- within(pd,{
     title[row==2 & column==1] <- paste0('$\\tau=0.13-0.02\\eta_T$\n$\\hat{\\tau}=',sprintf("%.2f",estEff$linEff['b0',1]),
                                         ifelse(estEff$linEff['b1',1]>0,'+',''),
                                         (sprintf("%.2f",estEff$linEff['b1',1])),'\\eta_T$')
-    title[row==2 & column==2] <- paste0('$\\tau=-0.04x^2+0.01*x+0.02$\n$\\hat{\\tau}=',
+    title[row==2 & column==2] <- paste0('$\\tau=-0.04\\eta_T^2+0.01\\eta_T+0.02$\n$\\hat{\\tau}=',
                                         sprintf("%.2f",estEff$quadEff['b0',1]),
                                         ifelse(estEff$quadEff['b1',1]>0,'+',' '),
                                         sprintf("%.2f",estEff$quadEff['b1',1]),'\\eta_T$')})
@@ -398,7 +396,7 @@ setwd('figure'); tools::texi2dvi('fakePlots.tex', pdf = T, clean = T); setwd('..
 
 draw <- which.min(abs(draws$b1-mean(draws$b1)))
 plotDat <- with(sdatLat,data.frame(Y=scale(Y,center=mean(Y[Z==0]),scale=pooledSD),
-                                   eta=scale(studEff[draw,],scale=IQR(studEff[draw,])),
+                                   eta=scale(studEff[draw,],scale=IQR(draws$studEff[draw,])),
                                    Z=Z))
 
 plotDat$treat <- ifelse(plotDat$Z==1,'Treatment','Control')
@@ -412,17 +410,14 @@ plotDat$treat2 <- plotDat$treat
 tikz(file = "figure/etaModel.tex",
   standAlone = T,
   width  = 6, height  = 6)
-print(ggplot(plotDat,aes(eta,Y,fill=treat,group=treat,color=treat))+geom_point(size=.5)+
-      ##geom_smooth(aes(linetype=treat2),color='black',se=FALSE,size=2,alpha=1,method='lm')+
-      #geom_smooth(aes(color=treat),se=FALSE,size=5,method='lm')+
-      #geom_smooth(color='black',se=FALSE,size=2.5,method='lm')+
+print(ggplot(plotDat,aes(eta,Y,fill=treat,group=treat,color=treat))+geom_point(size=1)+
       coord_cartesian(xlim=quantile(plotDat$eta,c(0.005,0.995)),ylim=quantile(plotDat$Y,c(0.005,0.995)))+
       geom_abline(aes(intercept=int,slope=slope,color=treat),size=4,alpha=1)+#+scale_alpha_discrete(range=c(0.4,.8))+
       geom_abline(aes(intercept=int,slope=slope),color='black',size=2,alpha=1)+#+scale_alpha_discrete(range=c(0.4,.8))+
     scale_colour_manual(values=c('red','blue'))+
     labs(group=NULL,fill=NULL,alpha=NULL)+xlab('$\\eta_T$')+
     ylab('Posttest Score')+theme(legend.position='top',text=element_text(size=15))+
-guides(color = guide_legend(title=NULL,override.aes=list(alpha=1),keywidth=3),linetype=guide_legend(title=NULL,keywidth=1)))#override.aes=list(size=2)))
+    guides(color = guide_legend(title=NULL,override.aes=list(alpha=1,size=3),keywidth=3),linetype=guide_legend(title=NULL,keywidth=1,override.aes=list(size=1))))
 dev.off()
 setwd('figure'); tools::texi2dvi('etaModel.tex', pdf = T, clean = T); setwd('..')
 
